@@ -137,6 +137,8 @@ class Mesh {
 			texID = pipeline.getTextureUnit(name + number);
 
 			g.setTexture(texID, textures[i].tex);
+			g.setTextureParameters(texID, kha.graphics4.TextureAddressing.Clamp, kha.graphics4.TextureAddressing.Clamp,
+				kha.graphics4.TextureFilter.LinearFilter, kha.graphics4.TextureFilter.LinearFilter, kha.graphics4.MipMapFilter.NoMipFilter);
 		}
 
 		g.drawIndexedVertices();

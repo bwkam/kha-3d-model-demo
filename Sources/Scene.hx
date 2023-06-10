@@ -44,7 +44,7 @@ class Scene {
 		g.begin();
 
 		// Clear screen
-		g.clear(Color.fromFloats(0.0, 0.0, 0.0), 1.0);
+		g.clear(Color.fromFloats(0.2, 0.1, 0.0), 1.0);
 
 		model.draw(g, proj, modelMatrix, Camera.view);
 
