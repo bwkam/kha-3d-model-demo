@@ -61,29 +61,26 @@ class Mesh {
 
 		// vertex buffer
 
-		vertexBuffer = new VertexBuffer(Std.int(vertices.length / 3), structure, Usage.StaticUsage);
+		vertexBuffer = new VertexBuffer(vertices.length, structure, Usage.StaticUsage);
 
 		var vbData = vertexBuffer.lock();
 
-		for (i in 0...Std.int(vbData.length / structureLength)) {
+		for (i => vertex in vertices) {
 			// vertices
-			vbData.set(i * structureLength, vertices[i * 3].position.x);
-			vbData.set(i * structureLength + 1, vertices[i * 3].position.y);
-			vbData.set(i * structureLength + 2, vertices[i * 3].position.z);
+			vbData.set(i * structureLength + 0, vertex.position.x);
+			vbData.set(i * structureLength + 1, vertex.position.y);
+			vbData.set(i * structureLength + 2, vertex.position.z);
 
 			// normals
-			vbData.set(i * structureLength + 3, vertices[i * 6].normal.x);
-			vbData.set(i * structureLength + 4, vertices[i * 6].normal.y);
-			vbData.set(i * structureLength + 5, vertices[i * 6].normal.z);
-
-			trace("Errored here: " + i);
+			vbData.set(i * structureLength + 3, vertex.normal.x);
+			vbData.set(i * structureLength + 4, vertex.normal.y);
+			vbData.set(i * structureLength + 5, vertex.normal.z);
 
 			// texture uvs
-			vbData.set(i * structureLength + 6, vertices[i * 8].texCoords.x);
-			vbData.set(i * structureLength + 7, vertices[i * 8].texCoords.y);
+			vbData.set(i * structureLength + 6, vertex.texCoords.x);
+			vbData.set(i * structureLength + 7, vertex.texCoords.y);
 		}
 		vertexBuffer.unlock();
-
 		// index buffer
 
 		indexBuffer = new IndexBuffer(indices.length, Usage.StaticUsage);
@@ -137,7 +134,7 @@ class Mesh {
 			else if (name == "texture_specular")
 				number = Std.string(specularNr++);
 
-			texID = pipeline.getTextureUnit("material." + name + number);
+			texID = pipeline.getTextureUnit(name + number);
 
 			g.setTexture(texID, textures[i].tex);
 		}

@@ -25,7 +25,7 @@ class Model {
 	var _directory:String;
 	var _loadedTextures:Array<Texture> = [];
 
-	var _meshes:Array<Mesh>;
+	var _meshes:Array<Mesh> = [];
 
 	/**
 	 * Constructor
