@@ -15,5 +15,6 @@ project.addSources('Sources');
 
 // libraries
 project.addLibrary('gltf');
+project.addLibrary('zui');
 
 resolve(project);

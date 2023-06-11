@@ -1,3 +1,4 @@
+import Mesh.Light;
 import kha.math.FastMatrix4;
 import kha.graphics4.PipelineState;
 import kha.graphics4.Graphics;
@@ -39,9 +40,9 @@ class Model {
 		loadModel(gltfFilePath, gltfBinFilePath);
 	}
 
-	public function draw(g:Graphics, proj:FastMatrix4, model:FastMatrix4, view:FastMatrix4) {
+	public function draw(g:Graphics, proj:FastMatrix4, model:FastMatrix4, view:FastMatrix4, light:Light) {
 		for (mesh in _meshes) {
-			mesh.draw(g, proj, model, view);
+			mesh.draw(g, proj, model, view, light);
 		}
 	}
 
@@ -168,7 +169,6 @@ class Model {
 			}
 			if (!alreadyLoaded) {
 				var img:Image = null;
-				// Assets.loadImageFromPath(path, true, (image:Image) -> img = image, (error:AssetError) -> trace("FUCKING ERROR: " + error));
 
 				if (path.contains("diffuse")) {
 					img = Assets.images.diffuse;

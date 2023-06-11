@@ -12,7 +12,6 @@ import kha.graphics4.VertexData;
 import kha.graphics4.VertexStructure;
 import kha.graphics4.IndexBuffer;
 import kha.graphics4.VertexBuffer;
-import haxe.ds.Vector;
 import kha.math.FastVector2;
 import kha.math.FastVector3;
 
@@ -29,6 +28,18 @@ typedef Texture = {
 	var path:String;
 }
 
+typedef Light = {
+	var position:FastVector3;
+
+	var constant:Float;
+	var linear:Float;
+	var quadratic:Float;
+	var ambient:FastVector3;
+	var diffuse:FastVector3;
+	var specular:FastVector3;
+	var shininess:Float;
+}
+
 class Mesh {
 	public var vertices:Array<Vertex>;
 	public var indices:Array<Int>;
@@ -42,6 +53,15 @@ class Mesh {
 	private var projID:ConstantLocation;
 	private var modelID:ConstantLocation;
 	private var viewID:ConstantLocation;
+
+	private var lightPositionID:ConstantLocation;
+	private var lightConstantID:ConstantLocation;
+	private var lightLinearID:ConstantLocation;
+	private var lightQuadraticID:ConstantLocation;
+	private var lightAmbientID:ConstantLocation;
+	private var lightDiffuseID:ConstantLocation;
+	private var lightSpecularID:ConstantLocation;
+	private var shininessID:ConstantLocation;
 
 	public function new(vertices:Array<Vertex>, indices:Array<Int>, textures:Array<Texture>) {
 		this.vertices = vertices;
@@ -107,9 +127,18 @@ class Mesh {
 		projID = pipeline.getConstantLocation("proj");
 		modelID = pipeline.getConstantLocation("model");
 		viewID = pipeline.getConstantLocation("view");
+
+		lightPositionID = pipeline.getConstantLocation("pointLight.position");
+		lightConstantID = pipeline.getConstantLocation("pointLight.constant");
+		lightLinearID = pipeline.getConstantLocation("pointLight.linear");
+		lightQuadraticID = pipeline.getConstantLocation("pointLight.quadratic");
+		lightAmbientID = pipeline.getConstantLocation("pointLight.ambient");
+		lightDiffuseID = pipeline.getConstantLocation("pointLight.diffuse");
+		lightSpecularID = pipeline.getConstantLocation("pointLight.specular");
+		shininessID = pipeline.getConstantLocation("material.shininess");
 	}
 
-	public function draw(g:Graphics, proj:FastMatrix4, model:FastMatrix4, view:FastMatrix4) {
+	public function draw(g:Graphics, proj:FastMatrix4, model:FastMatrix4, view:FastMatrix4, light:Light) {
 		g.setPipeline(pipeline);
 
 		g.setVertexBuffer(vertexBuffer);
@@ -118,6 +147,17 @@ class Mesh {
 		g.setMatrix(projID, proj);
 		g.setMatrix(modelID, model);
 		g.setMatrix(viewID, view);
+
+		g.setFloat3(lightPositionID, light.position.x, light.position.y, light.position.z);
+
+		g.setFloat(lightConstantID, light.constant);
+		g.setFloat(lightLinearID, light.linear);
+		g.setFloat(lightQuadraticID, light.quadratic);
+		g.setFloat(shininessID, light.shininess);
+
+		g.setFloat3(lightAmbientID, light.ambient.x, light.ambient.y, light.ambient.z);
+		g.setFloat3(lightDiffuseID, light.diffuse.x, light.diffuse.y, light.diffuse.z);
+		g.setFloat3(lightSpecularID, light.specular.x, light.specular.y, light.specular.z);
 
 		var diffuseNr = 1;
 		var specularNr = 1;
@@ -134,7 +174,7 @@ class Mesh {
 			else if (name == "texture_specular")
 				number = Std.string(specularNr++);
 
-			texID = pipeline.getTextureUnit(name + number);
+			texID = pipeline.getTextureUnit("material." + name + number);
 
 			g.setTexture(texID, textures[i].tex);
 			g.setTextureParameters(texID, kha.graphics4.TextureAddressing.Clamp, kha.graphics4.TextureAddressing.Clamp,
