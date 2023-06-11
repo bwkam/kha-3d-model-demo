@@ -1,0 +1,60 @@
+#version 100
+precision mediump float;
+precision highp int;
+
+struct PointLight
+{
+    highp vec3 position;
+    highp float constant;
+    highp float linear;
+    highp float quadratic;
+    highp vec3 ambient;
+    highp vec3 diffuse;
+    highp vec3 specular;
+};
+
+struct Material
+{
+    highp sampler2D texture_diffuse1;
+    highp sampler2D texture_specular1;
+    highp float shininess;
+};
+
+uniform highp vec3 viewPos;
+uniform PointLight pointLight;
+uniform Material material;
+
+varying highp vec3 Normal;
+varying highp vec3 FragPos;
+varying highp vec2 TexCoords;
+
+highp vec3 CalcPointLight(PointLight light, highp vec3 normal, highp vec3 fragPos, highp vec3 viewDir)
+{
+    highp vec3 lightDir = normalize(light.position - fragPos);
+    highp float diff = max(dot(normal, lightDir), 0.0);
+    highp vec3 reflectDir = reflect(-lightDir, normal);
+    highp float spec = pow(max(dot(viewDir, reflectDir), 0.0), material.shininess);
+    highp float _distance = length(light.position - fragPos);
+    highp float attenuation = 1.0 / ((light.constant + (light.linear * _distance)) + (light.quadratic * (_distance * _distance)));
+    highp vec3 ambient = light.ambient * vec3(texture2D(material.texture_diffuse1, TexCoords).xyz);
+    highp vec3 diffuse = (light.diffuse * diff) * vec3(texture2D(material.texture_diffuse1, TexCoords).xyz);
+    highp vec3 specular = (light.specular * spec) * vec3(texture2D(material.texture_specular1, TexCoords).xyz);
+    ambient *= attenuation;
+    diffuse *= attenuation;
+    specular *= attenuation;
+    return (ambient + diffuse) + specular;
+}
+
+void main()
+{
+    highp vec3 norm = normalize(Normal);
+    highp vec3 viewDir = normalize(viewPos - FragPos);
+    highp vec3 result = vec3(0.0);
+    PointLight param = pointLight;
+    highp vec3 param_1 = norm;
+    highp vec3 param_2 = FragPos;
+    highp vec3 param_3 = viewDir;
+    result += CalcPointLight(param, param_1, param_2, param_3);
+    gl_FragData[0] = vec4(result, 1.0);
+}
+

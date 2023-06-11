@@ -1,5 +1,6 @@
 package;
 
+import kha.input.Mouse;
 import kha.Color;
 import zui.Ext;
 import zui.Id;
@@ -23,6 +24,8 @@ class Scene {
 	public var pointLightSpecular:Handle;
 	public var pointLightColor:Handle;
 	public var pointLightColorV:Color;
+
+	public var lightPosition:FastVector3;
 
 	public function new() {
 		// once the assets are loaded, we let kha call that function
@@ -53,6 +56,11 @@ class Scene {
 		Scheduler.addTimeTask(update, 0, 1 / 60);
 		// Add mouse and keyboard listeners
 		kha.input.Mouse.get().notify(Camera.onMouseDown, Camera.onMouseUp, Camera.onMouseMove, null);
+		kha.input.Mouse.get().notify(null, null, (x, y, dx, dy) -> {
+			lightPosition.x = x;
+			lightPosition.y = y;
+			lightPosition.z = 0.0;
+		}, null);
 		kha.input.Keyboard.get().notify(Camera.onKeyDown, Camera.onKeyUp);
 	}
 
@@ -87,7 +95,7 @@ class Scene {
 				pointLightColorV.B * pointLightDiffuse.value),
 			specular: new FastVector3(pointLightColorV.R * pointLightSpecular.value, pointLightColorV.G * pointLightSpecular.value,
 				pointLightColorV.B * pointLightSpecular.value),
-			position: new FastVector3(0.0, 2.0, -2.0),
+			position: lightPosition,
 		});
 
 		// End rendering

@@ -1,0 +1,22 @@
+#version 300 es
+
+uniform mat4 model;
+uniform mat4 proj;
+uniform mat4 view;
+
+out vec3 FragPos;
+in vec3 aPos;
+out vec3 Normal;
+in vec3 aNormal;
+out vec2 TexCoords;
+in vec2 aTexCoords;
+
+void main()
+{
+    FragPos = vec3((model * vec4(aPos, 1.0)).xyz);
+    mat4 _31 = transpose(inverse(model));
+    Normal = mat3(_31[0].xyz, _31[1].xyz, _31[2].xyz) * aNormal;
+    TexCoords = aTexCoords;
+    gl_Position = ((proj * view) * model) * vec4(aPos, 1.0);
+}
+
