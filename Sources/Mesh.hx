@@ -140,7 +140,6 @@ class Mesh {
 			g.setTextureParameters(texID, kha.graphics4.TextureAddressing.Clamp, kha.graphics4.TextureAddressing.Clamp,
 				kha.graphics4.TextureFilter.LinearFilter, kha.graphics4.TextureFilter.LinearFilter, kha.graphics4.MipMapFilter.NoMipFilter);
 		}
-
 		g.drawIndexedVertices();
 	}
 }

@@ -16,6 +16,8 @@ import gltf.types.MeshPrimitive;
 import gltf.types.Node;
 import haxe.io.Path;
 
+using StringTools;
+
 /**
  * A model loaded from a GLTF artifact.
  */
@@ -165,15 +167,20 @@ class Model {
 				}
 			}
 			if (!alreadyLoaded) {
-				var img:Image;
-				Assets.loadImageFromPath(path, true, (image:Image) -> img = image, (error:AssetError) -> trace("FUCKING ERROR: " + error));
+				var img:Image = null;
+				// Assets.loadImageFromPath(path, true, (image:Image) -> img = image, (error:AssetError) -> trace("FUCKING ERROR: " + error));
 
-				var texture = img;
+				if (path.contains("diffuse")) {
+					img = Assets.images.diffuse;
+				} else if (path.contains("specular")) {
+					img = Assets.images.specular;
+				}
+
 				_loadedTextures.push({
 					id: textureID,
 					type: textureID == 0 ? "texture_diffuse" : "texture_specular",
 					path: path,
-					tex: texture
+					tex: img
 				});
 			}
 			textureID++;
