@@ -30,6 +30,7 @@ typedef Texture = {
 
 typedef Light = {
 	var position:FastVector3;
+	var direction:FastVector3;
 
 	var constant:Float;
 	var linear:Float;
@@ -38,6 +39,8 @@ typedef Light = {
 	var diffuse:FastVector3;
 	var specular:FastVector3;
 	var shininess:Float;
+	var cutOff:Float;
+	var outerCutOff:Float;
 }
 
 class Mesh {
@@ -55,6 +58,7 @@ class Mesh {
 	private var viewID:ConstantLocation;
 
 	private var lightPositionID:ConstantLocation;
+	private var lightDirectionID:ConstantLocation;
 	private var lightConstantID:ConstantLocation;
 	private var lightLinearID:ConstantLocation;
 	private var lightQuadraticID:ConstantLocation;
@@ -62,6 +66,8 @@ class Mesh {
 	private var lightDiffuseID:ConstantLocation;
 	private var lightSpecularID:ConstantLocation;
 	private var shininessID:ConstantLocation;
+	private var cutOffID:ConstantLocation;
+	private var outerCutOffID:ConstantLocation;
 
 	public function new(vertices:Array<Vertex>, indices:Array<Int>, textures:Array<Texture>) {
 		this.vertices = vertices;
@@ -129,6 +135,7 @@ class Mesh {
 		viewID = pipeline.getConstantLocation("view");
 
 		lightPositionID = pipeline.getConstantLocation("pointLight.position");
+		lightDirectionID = pipeline.getConstantLocation("pointLight.direction");
 		lightConstantID = pipeline.getConstantLocation("pointLight.constant");
 		lightLinearID = pipeline.getConstantLocation("pointLight.linear");
 		lightQuadraticID = pipeline.getConstantLocation("pointLight.quadratic");
@@ -136,6 +143,8 @@ class Mesh {
 		lightDiffuseID = pipeline.getConstantLocation("pointLight.diffuse");
 		lightSpecularID = pipeline.getConstantLocation("pointLight.specular");
 		shininessID = pipeline.getConstantLocation("material.shininess");
+		cutOffID = pipeline.getConstantLocation("pointLight.cutOff");
+		outerCutOffID = pipeline.getConstantLocation("pointLight.outerCutOff");
 	}
 
 	public function draw(g:Graphics, proj:FastMatrix4, model:FastMatrix4, view:FastMatrix4, light:Light) {
@@ -149,11 +158,15 @@ class Mesh {
 		g.setMatrix(viewID, view);
 
 		g.setFloat3(lightPositionID, light.position.x, light.position.y, light.position.z);
+		g.setFloat3(lightDirectionID, light.direction.x, light.direction.y, light.direction.z);
 
 		g.setFloat(lightConstantID, light.constant);
 		g.setFloat(lightLinearID, light.linear);
 		g.setFloat(lightQuadraticID, light.quadratic);
 		g.setFloat(shininessID, light.shininess);
+
+		g.setFloat(cutOffID, light.cutOff);
+		g.setFloat(outerCutOffID, light.outerCutOff);
 
 		g.setFloat3(lightAmbientID, light.ambient.x, light.ambient.y, light.ambient.z);
 		g.setFloat3(lightDiffuseID, light.diffuse.x, light.diffuse.y, light.diffuse.z);

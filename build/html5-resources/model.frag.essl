@@ -5,12 +5,15 @@ precision highp int;
 struct PointLight
 {
     highp vec3 position;
+    highp vec3 direction;
     highp float constant;
     highp float linear;
     highp float quadratic;
     highp vec3 ambient;
     highp vec3 diffuse;
     highp vec3 specular;
+    highp float cutOff;
+    highp float outerCutOff;
 };
 
 struct Material
@@ -36,12 +39,15 @@ highp vec3 CalcPointLight(PointLight light, highp vec3 normal, highp vec3 fragPo
     highp float spec = pow(max(dot(viewDir, reflectDir), 0.0), material.shininess);
     highp float _distance = length(light.position - fragPos);
     highp float attenuation = 1.0 / ((light.constant + (light.linear * _distance)) + (light.quadratic * (_distance * _distance)));
+    highp float theta = dot(lightDir, normalize(-light.direction));
+    highp float epsilon = light.cutOff - light.outerCutOff;
+    highp float intensity = clamp((theta - light.outerCutOff) / epsilon, 0.0, 1.0);
     highp vec3 ambient = light.ambient * vec3(texture2D(material.texture_diffuse1, TexCoords).xyz);
     highp vec3 diffuse = (light.diffuse * diff) * vec3(texture2D(material.texture_diffuse1, TexCoords).xyz);
     highp vec3 specular = (light.specular * spec) * vec3(texture2D(material.texture_specular1, TexCoords).xyz);
-    ambient *= attenuation;
-    diffuse *= attenuation;
-    specular *= attenuation;
+    ambient *= (attenuation * intensity);
+    diffuse *= (attenuation * intensity);
+    specular *= (attenuation * intensity);
     return (ambient + diffuse) + specular;
 }
 

@@ -22,6 +22,8 @@ class Scene {
 	public var pointLightAmbient:Handle;
 	public var pointLightDiffuse:Handle;
 	public var pointLightSpecular:Handle;
+	public var cutOff:Handle;
+	public var outerCutOff:Handle;
 	public var pointLightColor:Handle;
 	public var pointLightColorV:Color;
 
@@ -36,8 +38,10 @@ class Scene {
 		model = new Model("backpack.gltf2", "backpack.bin");
 
 		proj = FastMatrix4.perspectiveProjection(45.0, 4.0 / 3.0, 0.1, 100.0);
+		lightPosition = new FastVector3();
 
 		modelMatrix = FastMatrix4.identity();
+		modelMatrix = FastMatrix4.translation(0.0, 0.0, 0.0);
 		modelMatrix = FastMatrix4.scale(1.0, 1.0, 1.0);
 
 		ui = new Zui({
@@ -49,6 +53,8 @@ class Scene {
 		pointLightAmbient = Id.handle();
 		pointLightDiffuse = Id.handle();
 		pointLightSpecular = Id.handle();
+		cutOff = Id.handle();
+		outerCutOff = Id.handle();
 		pointLightColor = Id.handle();
 		pointLightColorV = Red;
 
@@ -57,9 +63,10 @@ class Scene {
 		// Add mouse and keyboard listeners
 		kha.input.Mouse.get().notify(Camera.onMouseDown, Camera.onMouseUp, Camera.onMouseMove, null);
 		kha.input.Mouse.get().notify(null, null, (x, y, dx, dy) -> {
-			lightPosition.x = x;
-			lightPosition.y = y;
+			lightPosition.x = x / 640.0;
+			lightPosition.y = y / -480.0;
 			lightPosition.z = 0.0;
+			trace(lightPosition.x, lightPosition.y);
 		}, null);
 		kha.input.Keyboard.get().notify(Camera.onKeyDown, Camera.onKeyUp);
 	}
@@ -69,7 +76,6 @@ class Scene {
 		var r = 10;
 		var posX = Math.cos(Timer.stamp() * r);
 		var posZ = Math.sin(Timer.stamp() * r);
-		modelMatrix = FastMatrix4.rotation(Timer.stamp() + r, Timer.stamp() + r, Timer.stamp() + r).multmat(FastMatrix4.translation(posX, 0.0, posZ));
 		// modelMatrix =
 	}
 
@@ -96,6 +102,9 @@ class Scene {
 			specular: new FastVector3(pointLightColorV.R * pointLightSpecular.value, pointLightColorV.G * pointLightSpecular.value,
 				pointLightColorV.B * pointLightSpecular.value),
 			position: lightPosition,
+			cutOff: Math.cos(cutOff.value * Math.PI / 180),
+			outerCutOff: Math.cos(outerCutOff.value * Math.PI / 180),
+			direction: new FastVector3(0.0, 0.0, -1.0),
 		});
 
 		// End rendering
@@ -111,6 +120,8 @@ class Scene {
 					ui.slider(pointLightAmbient, "ambient", 0, 5, true);
 					ui.slider(pointLightDiffuse, "diffuse", 0, 5, true);
 					ui.slider(pointLightSpecular, "specular", 0, 5, true);
+					ui.slider(cutOff, "cutOff", 0, 90, true);
+					ui.slider(outerCutOff, "outerCutOff", 0, 90, true);
 					pointLightColorV = Ext.colorWheel(ui, pointLightColor);
 					ui.unindent();
 				}

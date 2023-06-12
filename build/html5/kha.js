@@ -446,6 +446,7 @@ Mesh.prototype = {
 	,modelID: null
 	,viewID: null
 	,lightPositionID: null
+	,lightDirectionID: null
 	,lightConstantID: null
 	,lightLinearID: null
 	,lightQuadraticID: null
@@ -453,6 +454,8 @@ Mesh.prototype = {
 	,lightDiffuseID: null
 	,lightSpecularID: null
 	,shininessID: null
+	,cutOffID: null
+	,outerCutOffID: null
 	,setUpMesh: function() {
 		var structureLength = 8;
 		this.structure = new kha_graphics4_VertexStructure();
@@ -510,6 +513,7 @@ Mesh.prototype = {
 		this.modelID = this.pipeline.getConstantLocation("model");
 		this.viewID = this.pipeline.getConstantLocation("view");
 		this.lightPositionID = this.pipeline.getConstantLocation("pointLight.position");
+		this.lightDirectionID = this.pipeline.getConstantLocation("pointLight.direction");
 		this.lightConstantID = this.pipeline.getConstantLocation("pointLight.constant");
 		this.lightLinearID = this.pipeline.getConstantLocation("pointLight.linear");
 		this.lightQuadraticID = this.pipeline.getConstantLocation("pointLight.quadratic");
@@ -517,6 +521,8 @@ Mesh.prototype = {
 		this.lightDiffuseID = this.pipeline.getConstantLocation("pointLight.diffuse");
 		this.lightSpecularID = this.pipeline.getConstantLocation("pointLight.specular");
 		this.shininessID = this.pipeline.getConstantLocation("material.shininess");
+		this.cutOffID = this.pipeline.getConstantLocation("pointLight.cutOff");
+		this.outerCutOffID = this.pipeline.getConstantLocation("pointLight.outerCutOff");
 	}
 	,draw: function(g,proj,model,view,light) {
 		g.setPipeline(this.pipeline);
@@ -526,10 +532,13 @@ Mesh.prototype = {
 		g.setMatrix(this.modelID,model);
 		g.setMatrix(this.viewID,view);
 		g.setFloat3(this.lightPositionID,light.position.x,light.position.y,light.position.z);
+		g.setFloat3(this.lightDirectionID,light.direction.x,light.direction.y,light.direction.z);
 		g.setFloat(this.lightConstantID,light.constant);
 		g.setFloat(this.lightLinearID,light.linear);
 		g.setFloat(this.lightQuadraticID,light.quadratic);
 		g.setFloat(this.shininessID,light.shininess);
+		g.setFloat(this.cutOffID,light.cutOff);
+		g.setFloat(this.outerCutOffID,light.outerCutOff);
 		g.setFloat3(this.lightAmbientID,light.ambient.x,light.ambient.y,light.ambient.z);
 		g.setFloat3(this.lightDiffuseID,light.diffuse.x,light.diffuse.y,light.diffuse.z);
 		g.setFloat3(this.lightSpecularID,light.specular.x,light.specular.y,light.specular.z);
@@ -745,24 +754,38 @@ Scene.prototype = {
 	,pointLightAmbient: null
 	,pointLightDiffuse: null
 	,pointLightSpecular: null
+	,cutOff: null
+	,outerCutOff: null
 	,pointLightColor: null
 	,pointLightColorV: null
+	,lightPosition: null
 	,loadEverything: function() {
+		var _gthis = this;
 		this.model = new Model("backpack.gltf2","backpack.bin");
 		var uh = 1.0 / Math.tan(22.5);
 		var uw = uh / 1.33333333333333326;
 		this.proj = new kha_math_FastMatrix4(uw,0,0,0,0,uh,0,0,0,0,-1.00200200200200196,-0.200200200200200185,0,0,-1,0);
+		this.lightPosition = new kha_math_FastVector3();
 		this.modelMatrix = new kha_math_FastMatrix4(1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1);
+		this.modelMatrix = new kha_math_FastMatrix4(1,0,0,0.0,0,1,0,0.0,0,0,1,0.0,0,0,0,1);
 		this.modelMatrix = new kha_math_FastMatrix4(1.0,0,0,0,0,1.0,0,0,0,0,1.0,0,0,0,0,1);
 		this.ui = new zui_Zui({ font : kha_Assets.fonts.DroidSans, color_wheel : kha_Assets.images.color_wheel, black_white_gradient : kha_Assets.images.black_white_gradient});
 		this.pointLightAmbient = zui_Handle.global.nest(0,null);
 		this.pointLightDiffuse = zui_Handle.global.nest(1,null);
 		this.pointLightSpecular = zui_Handle.global.nest(2,null);
-		this.pointLightColor = zui_Handle.global.nest(3,null);
+		this.cutOff = zui_Handle.global.nest(3,null);
+		this.outerCutOff = zui_Handle.global.nest(4,null);
+		this.pointLightColor = zui_Handle.global.nest(5,null);
 		this.pointLightColorV = -65536;
 		kha_System.notifyOnFrames($bind(this,this.render));
 		kha_Scheduler.addTimeTask($bind(this,this.update),0,0.0166666666666666664);
 		kha_input_Mouse.get().notify(Camera.onMouseDown,Camera.onMouseUp,Camera.onMouseMove,null);
+		kha_input_Mouse.get().notify(null,null,function(x,y,dx,dy) {
+			_gthis.lightPosition.x = x / 640.0;
+			_gthis.lightPosition.y = y / -480.0;
+			_gthis.lightPosition.z = 0.0;
+			haxe_Log.trace(_gthis.lightPosition.x,{ fileName : "Scene.hx", lineNumber : 69, className : "Scene", methodName : "loadEverything", customParams : [_gthis.lightPosition.y]});
+		},null);
 		kha_input_Keyboard.get().notify(Camera.onKeyDown,Camera.onKeyUp);
 	}
 	,update: function() {
@@ -770,65 +793,25 @@ Scene.prototype = {
 		var r = 10;
 		var posX = Math.cos(kha_Scheduler.realTime() * r);
 		var posZ = Math.sin(kha_Scheduler.realTime() * r);
-		var yaw = kha_Scheduler.realTime() + r;
-		var pitch = kha_Scheduler.realTime() + r;
-		var roll = kha_Scheduler.realTime() + r;
-		var sy = Math.sin(yaw);
-		var cy = Math.cos(yaw);
-		var sx = Math.sin(pitch);
-		var cx = Math.cos(pitch);
-		var sz = Math.sin(roll);
-		var cz = Math.cos(roll);
-		var _this__00 = cx * cy;
-		var _this__10 = cx * sy * sz - sx * cz;
-		var _this__20 = cx * sy * cz + sx * sz;
-		var _this__30 = 0;
-		var _this__01 = sx * cy;
-		var _this__11 = sx * sy * sz + cx * cz;
-		var _this__21 = sx * sy * cz - cx * sz;
-		var _this__31 = 0;
-		var _this__02 = -sy;
-		var _this__12 = cy * sz;
-		var _this__22 = cy * cz;
-		var _this__32 = 0;
-		var _this__03 = 0;
-		var _this__13 = 0;
-		var _this__23 = 0;
-		var _this__33 = 1;
-		var m__00 = 1;
-		var m__10 = 0;
-		var m__20 = 0;
-		var m__30 = posX;
-		var m__01 = 0;
-		var m__11 = 1;
-		var m__21 = 0;
-		var m__31 = 0.0;
-		var m__02 = 0;
-		var m__12 = 0;
-		var m__22 = 1;
-		var m__32 = posZ;
-		var m__03 = 0;
-		var m__13 = 0;
-		var m__23 = 0;
-		var m__33 = 1;
-		this.modelMatrix = new kha_math_FastMatrix4(_this__00 * m__00 + _this__10 * m__01 + _this__20 * m__02 + _this__30 * m__03,_this__00 * m__10 + _this__10 * m__11 + _this__20 * m__12 + _this__30 * m__13,_this__00 * m__20 + _this__10 * m__21 + _this__20 * m__22 + _this__30 * m__23,_this__00 * m__30 + _this__10 * m__31 + _this__20 * m__32 + _this__30 * m__33,_this__01 * m__00 + _this__11 * m__01 + _this__21 * m__02 + _this__31 * m__03,_this__01 * m__10 + _this__11 * m__11 + _this__21 * m__12 + _this__31 * m__13,_this__01 * m__20 + _this__11 * m__21 + _this__21 * m__22 + _this__31 * m__23,_this__01 * m__30 + _this__11 * m__31 + _this__21 * m__32 + _this__31 * m__33,_this__02 * m__00 + _this__12 * m__01 + _this__22 * m__02 + _this__32 * m__03,_this__02 * m__10 + _this__12 * m__11 + _this__22 * m__12 + _this__32 * m__13,_this__02 * m__20 + _this__12 * m__21 + _this__22 * m__22 + _this__32 * m__23,_this__02 * m__30 + _this__12 * m__31 + _this__22 * m__32 + _this__32 * m__33,_this__03 * m__00 + _this__13 * m__01 + _this__23 * m__02 + _this__33 * m__03,_this__03 * m__10 + _this__13 * m__11 + _this__23 * m__12 + _this__33 * m__13,_this__03 * m__20 + _this__13 * m__21 + _this__23 * m__22 + _this__33 * m__23,_this__03 * m__30 + _this__13 * m__31 + _this__23 * m__32 + _this__33 * m__33);
 	}
 	,render: function(frames) {
 		var g = frames[0].get_g4();
 		var g2 = frames[0].get_g2();
 		g.begin();
 		g.clear(kha_Color.fromFloats(0.0,0.0,0.0),1.0);
-		this.model.draw(g,this.proj,this.modelMatrix,Camera.view,{ constant : 1.0, linear : 0.09, quadratic : 0.032, shininess : 32.0, ambient : new kha_math_FastVector3(((this.pointLightColorV & 16711680) >>> 16) * 0.00392156862745098 * this.pointLightAmbient.value,((this.pointLightColorV & 65280) >>> 8) * 0.00392156862745098 * this.pointLightAmbient.value,(this.pointLightColorV & 255) * 0.00392156862745098 * this.pointLightAmbient.value), diffuse : new kha_math_FastVector3(((this.pointLightColorV & 16711680) >>> 16) * 0.00392156862745098 * this.pointLightDiffuse.value,((this.pointLightColorV & 65280) >>> 8) * 0.00392156862745098 * this.pointLightDiffuse.value,(this.pointLightColorV & 255) * 0.00392156862745098 * this.pointLightDiffuse.value), specular : new kha_math_FastVector3(((this.pointLightColorV & 16711680) >>> 16) * 0.00392156862745098 * this.pointLightSpecular.value,((this.pointLightColorV & 65280) >>> 8) * 0.00392156862745098 * this.pointLightSpecular.value,(this.pointLightColorV & 255) * 0.00392156862745098 * this.pointLightSpecular.value), position : new kha_math_FastVector3(0.0,2.0,-2.0)});
+		this.model.draw(g,this.proj,this.modelMatrix,Camera.view,{ constant : 1.0, linear : 0.09, quadratic : 0.032, shininess : 32.0, ambient : new kha_math_FastVector3(((this.pointLightColorV & 16711680) >>> 16) * 0.00392156862745098 * this.pointLightAmbient.value,((this.pointLightColorV & 65280) >>> 8) * 0.00392156862745098 * this.pointLightAmbient.value,(this.pointLightColorV & 255) * 0.00392156862745098 * this.pointLightAmbient.value), diffuse : new kha_math_FastVector3(((this.pointLightColorV & 16711680) >>> 16) * 0.00392156862745098 * this.pointLightDiffuse.value,((this.pointLightColorV & 65280) >>> 8) * 0.00392156862745098 * this.pointLightDiffuse.value,(this.pointLightColorV & 255) * 0.00392156862745098 * this.pointLightDiffuse.value), specular : new kha_math_FastVector3(((this.pointLightColorV & 16711680) >>> 16) * 0.00392156862745098 * this.pointLightSpecular.value,((this.pointLightColorV & 65280) >>> 8) * 0.00392156862745098 * this.pointLightSpecular.value,(this.pointLightColorV & 255) * 0.00392156862745098 * this.pointLightSpecular.value), position : this.lightPosition, cutOff : Math.cos(this.cutOff.value * Math.PI / 180), outerCutOff : Math.cos(this.outerCutOff.value * Math.PI / 180), direction : new kha_math_FastVector3(0.0,0.0,-1.0)});
 		g.end();
 		this.ui.begin(g2);
-		if(this.ui.window(zui_Handle.global.nest(4,null),10,10,240,600,true)) {
-			if(this.ui.panel(zui_Handle.global.nest(5,{ selected : true}),"Light")) {
+		if(this.ui.window(zui_Handle.global.nest(6,null),10,10,240,600,true)) {
+			if(this.ui.panel(zui_Handle.global.nest(7,{ selected : true}),"Light")) {
 				this.ui.indent();
-				if(this.ui.panel(zui_Handle.global.nest(6,{ selected : false}),"Pointlight")) {
+				if(this.ui.panel(zui_Handle.global.nest(8,{ selected : false}),"Pointlight")) {
 					this.ui.indent();
 					this.ui.slider(this.pointLightAmbient,"ambient",0,5,true);
 					this.ui.slider(this.pointLightDiffuse,"diffuse",0,5,true);
 					this.ui.slider(this.pointLightSpecular,"specular",0,5,true);
+					this.ui.slider(this.cutOff,"cutOff",0,90,true);
+					this.ui.slider(this.outerCutOff,"outerCutOff",0,90,true);
 					this.pointLightColorV = zui_Ext.colorWheel(this.ui,this.pointLightColor);
 					this.ui.unindent();
 				}
@@ -865,13 +848,6 @@ StringBuf.prototype = {
 var StringTools = function() { };
 $hxClasses["StringTools"] = StringTools;
 StringTools.__name__ = true;
-StringTools.startsWith = function(s,start) {
-	if(s.length >= start.length) {
-		return s.lastIndexOf(start,0) == 0;
-	} else {
-		return false;
-	}
-};
 StringTools.endsWith = function(s,end) {
 	var elen = end.length;
 	var slen = s.length;
@@ -5389,6 +5365,15 @@ kha_LoaderImpl.loadImageFromDescription = function(desc,done,failed) {
 kha_LoaderImpl.getSoundFormats = function() {
 	var element = window.document.createElement("audio");
 	var formats = [];
+	if(element.canPlayType("audio/mp4") != "") {
+		formats.push("mp4");
+	}
+	if(element.canPlayType("audio/mp3") != "") {
+		formats.push("mp3");
+	}
+	if(element.canPlayType("audio/wav") != "") {
+		formats.push("wav");
+	}
 	if(kha_SystemImpl._hasWebAudio || element.canPlayType("audio/ogg") != "") {
 		formats.push("ogg");
 	}
@@ -5396,6 +5381,43 @@ kha_LoaderImpl.getSoundFormats = function() {
 };
 kha_LoaderImpl.loadSoundFromDescription = function(desc,done,failed) {
 	if(kha_SystemImpl._hasWebAudio) {
+		var element = window.document.createElement("audio");
+		if(element.canPlayType("audio/mp4") != "") {
+			var _g = 0;
+			var _g1 = desc.files.length;
+			while(_g < _g1) {
+				var i = _g++;
+				var file = desc.files[i];
+				if(StringTools.endsWith(file,".mp4")) {
+					new kha_js_WebAudioSound(file,done,failed);
+					return;
+				}
+			}
+		}
+		if(element.canPlayType("audio/mp3") != "") {
+			var _g = 0;
+			var _g1 = desc.files.length;
+			while(_g < _g1) {
+				var i = _g++;
+				var file = desc.files[i];
+				if(StringTools.endsWith(file,".mp3")) {
+					new kha_js_WebAudioSound(file,done,failed);
+					return;
+				}
+			}
+		}
+		if(element.canPlayType("audio/wav") != "") {
+			var _g = 0;
+			var _g1 = desc.files.length;
+			while(_g < _g1) {
+				var i = _g++;
+				var file = desc.files[i];
+				if(StringTools.endsWith(file,".wav")) {
+					new kha_js_WebAudioSound(file,done,failed);
+					return;
+				}
+			}
+		}
 		var _g = 0;
 		var _g1 = desc.files.length;
 		while(_g < _g1) {
@@ -5461,7 +5483,7 @@ kha_LoaderImpl.loadSoundFromDescription = function(desc,done,failed) {
 	}
 };
 kha_LoaderImpl.getVideoFormats = function() {
-	return ["webm"];
+	return ["mp4","webm"];
 };
 kha_LoaderImpl.loadVideoFromDescription = function(desc,done,failed) {
 	kha_js_Video.fromFile(desc.files,done);
@@ -5501,42 +5523,16 @@ kha_LoaderImpl.loadRemote = function(desc,done,failed) {
 	request.send(null);
 };
 kha_LoaderImpl.loadBlobFromDescription = function(desc,done,failed) {
-	var file = desc.files[0];
-	if(StringTools.startsWith(file,"http://") || StringTools.startsWith(file,"https://")) {
-		kha_LoaderImpl.loadRemote(desc,done,failed);
-	} else if(StringTools.startsWith(file,"drop://")) {
-		var dropFile = kha_LoaderImpl.dropFiles.h[file.substring(7)];
-		if(dropFile == null) {
-			failed({ url : file, error : "file not found"});
-		} else {
-			var reader = new FileReader();
-			reader.onloadend = function() {
-				done(new kha_internal_BytesBlob(haxe_io_Bytes.ofData(reader.result)));
-			};
-			reader.onerror = function() {
-				failed({ url : file, error : reader.error});
-			};
-			reader.readAsArrayBuffer(dropFile);
-		}
-	} else {
-		var loadBlob = window.electron.loadBlob;
-		loadBlob(desc,function(byteArray) {
-			var bytes = new haxe_io_Bytes(new ArrayBuffer(byteArray.byteLength));
-			var _g = 0;
-			var _g1 = byteArray.byteLength;
-			while(_g < _g1) {
-				var i = _g++;
-				bytes.b[i] = byteArray[i];
-			}
-			done(new kha_internal_BytesBlob(bytes));
-		},failed);
-	}
+	kha_LoaderImpl.loadRemote(desc,done,failed);
 };
 kha_LoaderImpl.loadFontFromDescription = function(desc,done,failed) {
 	kha_LoaderImpl.loadBlobFromDescription(desc,function(blob) {
 		done(new kha_Kravur(blob));
 	},failed);
 };
+var kha_Macros = function() { };
+$hxClasses["kha.Macros"] = kha_Macros;
+kha_Macros.__name__ = true;
 var kha_TimeTask = function() {
 };
 $hxClasses["kha.TimeTask"] = kha_TimeTask;
@@ -6087,7 +6083,10 @@ kha_Shaders.init = function() {
 	var data = Reflect.field(kha_Shaders,"model_fragData" + 1);
 	var bytes = haxe_Unserializer.run(data);
 	blobs.push(kha_internal_BytesBlob.fromBytes(bytes));
-	kha_Shaders.model_frag = new kha_graphics4_FragmentShader(blobs,["model.frag.essl","model-webgl2.frag.essl"]);
+	var data = Reflect.field(kha_Shaders,"model_fragData" + 2);
+	var bytes = haxe_Unserializer.run(data);
+	blobs.push(kha_internal_BytesBlob.fromBytes(bytes));
+	kha_Shaders.model_frag = new kha_graphics4_FragmentShader(blobs,["model.frag.essl","model-webgl2.frag.essl","model-relaxed.frag.essl"]);
 	var blobs = [];
 	var data = Reflect.field(kha_Shaders,"model_vertData" + 0);
 	var bytes = haxe_Unserializer.run(data);
@@ -6095,7 +6094,10 @@ kha_Shaders.init = function() {
 	var data = Reflect.field(kha_Shaders,"model_vertData" + 1);
 	var bytes = haxe_Unserializer.run(data);
 	blobs.push(kha_internal_BytesBlob.fromBytes(bytes));
-	kha_Shaders.model_vert = new kha_graphics4_VertexShader(blobs,["model.vert.essl","model-webgl2.vert.essl"]);
+	var data = Reflect.field(kha_Shaders,"model_vertData" + 2);
+	var bytes = haxe_Unserializer.run(data);
+	blobs.push(kha_internal_BytesBlob.fromBytes(bytes));
+	kha_Shaders.model_vert = new kha_graphics4_VertexShader(blobs,["model.vert.essl","model-webgl2.vert.essl","model-relaxed.vert.essl"]);
 	var blobs = [];
 	var data = Reflect.field(kha_Shaders,"painter_colored_fragData" + 0);
 	var bytes = haxe_Unserializer.run(data);
@@ -6103,7 +6105,10 @@ kha_Shaders.init = function() {
 	var data = Reflect.field(kha_Shaders,"painter_colored_fragData" + 1);
 	var bytes = haxe_Unserializer.run(data);
 	blobs.push(kha_internal_BytesBlob.fromBytes(bytes));
-	kha_Shaders.painter_colored_frag = new kha_graphics4_FragmentShader(blobs,["painter-colored.frag.essl","painter-colored-webgl2.frag.essl"]);
+	var data = Reflect.field(kha_Shaders,"painter_colored_fragData" + 2);
+	var bytes = haxe_Unserializer.run(data);
+	blobs.push(kha_internal_BytesBlob.fromBytes(bytes));
+	kha_Shaders.painter_colored_frag = new kha_graphics4_FragmentShader(blobs,["painter-colored.frag.essl","painter-colored-webgl2.frag.essl","painter-colored-relaxed.frag.essl"]);
 	var blobs = [];
 	var data = Reflect.field(kha_Shaders,"painter_colored_vertData" + 0);
 	var bytes = haxe_Unserializer.run(data);
@@ -6111,7 +6116,10 @@ kha_Shaders.init = function() {
 	var data = Reflect.field(kha_Shaders,"painter_colored_vertData" + 1);
 	var bytes = haxe_Unserializer.run(data);
 	blobs.push(kha_internal_BytesBlob.fromBytes(bytes));
-	kha_Shaders.painter_colored_vert = new kha_graphics4_VertexShader(blobs,["painter-colored.vert.essl","painter-colored-webgl2.vert.essl"]);
+	var data = Reflect.field(kha_Shaders,"painter_colored_vertData" + 2);
+	var bytes = haxe_Unserializer.run(data);
+	blobs.push(kha_internal_BytesBlob.fromBytes(bytes));
+	kha_Shaders.painter_colored_vert = new kha_graphics4_VertexShader(blobs,["painter-colored.vert.essl","painter-colored-webgl2.vert.essl","painter-colored-relaxed.vert.essl"]);
 	var blobs = [];
 	var data = Reflect.field(kha_Shaders,"painter_image_fragData" + 0);
 	var bytes = haxe_Unserializer.run(data);
@@ -6119,7 +6127,10 @@ kha_Shaders.init = function() {
 	var data = Reflect.field(kha_Shaders,"painter_image_fragData" + 1);
 	var bytes = haxe_Unserializer.run(data);
 	blobs.push(kha_internal_BytesBlob.fromBytes(bytes));
-	kha_Shaders.painter_image_frag = new kha_graphics4_FragmentShader(blobs,["painter-image.frag.essl","painter-image-webgl2.frag.essl"]);
+	var data = Reflect.field(kha_Shaders,"painter_image_fragData" + 2);
+	var bytes = haxe_Unserializer.run(data);
+	blobs.push(kha_internal_BytesBlob.fromBytes(bytes));
+	kha_Shaders.painter_image_frag = new kha_graphics4_FragmentShader(blobs,["painter-image.frag.essl","painter-image-webgl2.frag.essl","painter-image-relaxed.frag.essl"]);
 	var blobs = [];
 	var data = Reflect.field(kha_Shaders,"painter_image_vertData" + 0);
 	var bytes = haxe_Unserializer.run(data);
@@ -6127,7 +6138,10 @@ kha_Shaders.init = function() {
 	var data = Reflect.field(kha_Shaders,"painter_image_vertData" + 1);
 	var bytes = haxe_Unserializer.run(data);
 	blobs.push(kha_internal_BytesBlob.fromBytes(bytes));
-	kha_Shaders.painter_image_vert = new kha_graphics4_VertexShader(blobs,["painter-image.vert.essl","painter-image-webgl2.vert.essl"]);
+	var data = Reflect.field(kha_Shaders,"painter_image_vertData" + 2);
+	var bytes = haxe_Unserializer.run(data);
+	blobs.push(kha_internal_BytesBlob.fromBytes(bytes));
+	kha_Shaders.painter_image_vert = new kha_graphics4_VertexShader(blobs,["painter-image.vert.essl","painter-image-webgl2.vert.essl","painter-image-relaxed.vert.essl"]);
 	var blobs = [];
 	var data = Reflect.field(kha_Shaders,"painter_text_fragData" + 0);
 	var bytes = haxe_Unserializer.run(data);
@@ -6135,7 +6149,10 @@ kha_Shaders.init = function() {
 	var data = Reflect.field(kha_Shaders,"painter_text_fragData" + 1);
 	var bytes = haxe_Unserializer.run(data);
 	blobs.push(kha_internal_BytesBlob.fromBytes(bytes));
-	kha_Shaders.painter_text_frag = new kha_graphics4_FragmentShader(blobs,["painter-text.frag.essl","painter-text-webgl2.frag.essl"]);
+	var data = Reflect.field(kha_Shaders,"painter_text_fragData" + 2);
+	var bytes = haxe_Unserializer.run(data);
+	blobs.push(kha_internal_BytesBlob.fromBytes(bytes));
+	kha_Shaders.painter_text_frag = new kha_graphics4_FragmentShader(blobs,["painter-text.frag.essl","painter-text-webgl2.frag.essl","painter-text-relaxed.frag.essl"]);
 	var blobs = [];
 	var data = Reflect.field(kha_Shaders,"painter_text_vertData" + 0);
 	var bytes = haxe_Unserializer.run(data);
@@ -6143,7 +6160,10 @@ kha_Shaders.init = function() {
 	var data = Reflect.field(kha_Shaders,"painter_text_vertData" + 1);
 	var bytes = haxe_Unserializer.run(data);
 	blobs.push(kha_internal_BytesBlob.fromBytes(bytes));
-	kha_Shaders.painter_text_vert = new kha_graphics4_VertexShader(blobs,["painter-text.vert.essl","painter-text-webgl2.vert.essl"]);
+	var data = Reflect.field(kha_Shaders,"painter_text_vertData" + 2);
+	var bytes = haxe_Unserializer.run(data);
+	blobs.push(kha_internal_BytesBlob.fromBytes(bytes));
+	kha_Shaders.painter_text_vert = new kha_graphics4_VertexShader(blobs,["painter-text.vert.essl","painter-text-webgl2.vert.essl","painter-text-relaxed.vert.essl"]);
 	var blobs = [];
 	var data = Reflect.field(kha_Shaders,"painter_video_fragData" + 0);
 	var bytes = haxe_Unserializer.run(data);
@@ -6151,7 +6171,10 @@ kha_Shaders.init = function() {
 	var data = Reflect.field(kha_Shaders,"painter_video_fragData" + 1);
 	var bytes = haxe_Unserializer.run(data);
 	blobs.push(kha_internal_BytesBlob.fromBytes(bytes));
-	kha_Shaders.painter_video_frag = new kha_graphics4_FragmentShader(blobs,["painter-video.frag.essl","painter-video-webgl2.frag.essl"]);
+	var data = Reflect.field(kha_Shaders,"painter_video_fragData" + 2);
+	var bytes = haxe_Unserializer.run(data);
+	blobs.push(kha_internal_BytesBlob.fromBytes(bytes));
+	kha_Shaders.painter_video_frag = new kha_graphics4_FragmentShader(blobs,["painter-video.frag.essl","painter-video-webgl2.frag.essl","painter-video-relaxed.frag.essl"]);
 	var blobs = [];
 	var data = Reflect.field(kha_Shaders,"painter_video_vertData" + 0);
 	var bytes = haxe_Unserializer.run(data);
@@ -6159,7 +6182,10 @@ kha_Shaders.init = function() {
 	var data = Reflect.field(kha_Shaders,"painter_video_vertData" + 1);
 	var bytes = haxe_Unserializer.run(data);
 	blobs.push(kha_internal_BytesBlob.fromBytes(bytes));
-	kha_Shaders.painter_video_vert = new kha_graphics4_VertexShader(blobs,["painter-video.vert.essl","painter-video-webgl2.vert.essl"]);
+	var data = Reflect.field(kha_Shaders,"painter_video_vertData" + 2);
+	var bytes = haxe_Unserializer.run(data);
+	blobs.push(kha_internal_BytesBlob.fromBytes(bytes));
+	kha_Shaders.painter_video_vert = new kha_graphics4_VertexShader(blobs,["painter-video.vert.essl","painter-video-webgl2.vert.essl","painter-video-relaxed.vert.essl"]);
 };
 var kha_Sound = function() {
 	this.sampleRate = 0;
@@ -6545,12 +6571,14 @@ kha_SystemImpl.errorHandler = function(message,source,lineno,colno,error) {
 };
 kha_SystemImpl.init = function(options,callback) {
 	kha_SystemImpl.options = options;
-	window.onerror = kha_SystemImpl.errorHandler;
-	var showWindow = window.electron.showWindow;
-	showWindow(options.title,options.window.x,options.window.y,options.width,options.height);
+	kha_SystemImpl.mobile = kha_SystemImpl.isMobile();
+	kha_SystemImpl.ios = kha_SystemImpl.isIOS();
+	kha_SystemImpl.chrome = kha_SystemImpl.isChrome();
+	kha_SystemImpl.firefox = kha_SystemImpl.isFirefox();
+	kha_SystemImpl.safari = kha_SystemImpl.isSafari();
+	kha_SystemImpl.ie = kha_SystemImpl.isIE();
+	kha_SystemImpl.mobileAudioPlaying = !kha_SystemImpl.mobile && !kha_SystemImpl.chrome && !kha_SystemImpl.firefox;
 	kha_SystemImpl.initSecondStep(callback);
-	kha_SystemImpl.chrome = true;
-	kha_SystemImpl.mobileAudioPlaying = true;
 };
 kha_SystemImpl.initSecondStep = function(callback) {
 	kha_SystemImpl.init2(kha_SystemImpl.options.window.width,kha_SystemImpl.options.window.height);
@@ -8780,7 +8808,7 @@ kha_audio2_Audio.stream = function(sound,loop) {
 		loop = false;
 	}
 	var element = window.document.createElement("audio");
-	var blob = new Blob([sound.compressedData.b.bufferValue],{ type : "audio/ogg"});
+	var blob = new Blob([sound.compressedData.b.bufferValue],{ type : "audio/mp4"});
 	element.src = URL.createObjectURL(blob);
 	element.loop = loop;
 	var channel = new kha_js_AEAudioChannel(element,loop);
@@ -10559,9 +10587,6 @@ kha_audio2_ogg_vorbis_VorbisDecodeState.prototype = {
 		if(this.nextSeg >= this.segments.length) {
 			this.nextSeg = -1;
 		}
-		if(this.bytesInSeg != 0) {
-			throw haxe_Exception.thrown(new kha_audio2_ogg_vorbis_data_ReaderError(kha_audio2_ogg_vorbis_data_ReaderErrorType.OTHER,"",{ fileName : "kha/audio2/ogg/vorbis/VorbisDecodeState.hx", lineNumber : 184, className : "kha.audio2.ogg.vorbis.VorbisDecodeState", methodName : "next"}));
-		}
 		this.bytesInSeg = len;
 		return len;
 	}
@@ -11141,9 +11166,6 @@ kha_audio2_ogg_vorbis_VorbisDecodeState.prototype = {
 			vec[i] = this.input.readByte();
 		}
 		var pageHeader = vec;
-		if(!(pageHeader[0] == 79 && pageHeader[1] == 103 && pageHeader[2] == 103 && pageHeader[3] == 83)) {
-			throw haxe_Exception.thrown(new kha_audio2_ogg_vorbis_data_ReaderError(kha_audio2_ogg_vorbis_data_ReaderErrorType.OTHER,"",{ fileName : "kha/audio2/ogg/vorbis/VorbisDecodeState.hx", lineNumber : 661, className : "kha.audio2.ogg.vorbis.VorbisDecodeState", methodName : "analyzePage"}));
-		}
 		var n = pageHeader[26];
 		this.inputPosition += n;
 		var vec = new Array(n);
@@ -11242,9 +11264,6 @@ kha_audio2_ogg_vorbis_VorbisDecodeState.prototype = {
 	}
 	,decodeScalarRaw: function(c) {
 		this.prepHuffman();
-		if(!(c.sortedCodewords != null || c.codewords != null)) {
-			throw haxe_Exception.thrown(new kha_audio2_ogg_vorbis_data_ReaderError(kha_audio2_ogg_vorbis_data_ReaderErrorType.OTHER,"",{ fileName : "kha/audio2/ogg/vorbis/VorbisDecodeState.hx", lineNumber : 788, className : "kha.audio2.ogg.vorbis.VorbisDecodeState", methodName : "decodeScalarRaw"}));
-		}
 		var codewordLengths = c.codewordLengths;
 		var codewords = c.codewords;
 		var sortedCodewords = c.sortedCodewords;
@@ -11277,9 +11296,6 @@ kha_audio2_ogg_vorbis_VorbisDecodeState.prototype = {
 			}
 			this.validBits = 0;
 			return -1;
-		}
-		if(c.sparse) {
-			throw haxe_Exception.thrown(new kha_audio2_ogg_vorbis_data_ReaderError(kha_audio2_ogg_vorbis_data_ReaderErrorType.OTHER,"",{ fileName : "kha/audio2/ogg/vorbis/VorbisDecodeState.hx", lineNumber : 830, className : "kha.audio2.ogg.vorbis.VorbisDecodeState", methodName : "decodeScalarRaw"}));
 		}
 		var _g = 0;
 		var _g1 = c.entries;
@@ -11679,7 +11695,7 @@ kha_audio2_ogg_vorbis_VorbisDecoder.prototype = {
 		} else if(len == this.header.blocksize1) {
 			return this.window[1];
 		} else {
-			throw haxe_Exception.thrown(new kha_audio2_ogg_vorbis_data_ReaderError(kha_audio2_ogg_vorbis_data_ReaderErrorType.OTHER,"",{ fileName : "kha/audio2/ogg/vorbis/VorbisDecoder.hx", lineNumber : 466, className : "kha.audio2.ogg.vorbis.VorbisDecoder", methodName : "getWindow"}));
+			return null;
 		}
 	}
 	,initBlocksize: function(bs,n) {
@@ -12578,9 +12594,6 @@ var kha_audio2_ogg_vorbis_VorbisTools = function() { };
 $hxClasses["kha.audio2.ogg.vorbis.VorbisTools"] = kha_audio2_ogg_vorbis_VorbisTools;
 kha_audio2_ogg_vorbis_VorbisTools.__name__ = true;
 kha_audio2_ogg_vorbis_VorbisTools.assert = function(b,p) {
-	if(!b) {
-		throw haxe_Exception.thrown(new kha_audio2_ogg_vorbis_data_ReaderError(kha_audio2_ogg_vorbis_data_ReaderErrorType.OTHER,"",p));
-	}
 };
 kha_audio2_ogg_vorbis_VorbisTools.neighbors = function(x,n) {
 	var low = -1;
@@ -12638,12 +12651,6 @@ kha_audio2_ogg_vorbis_VorbisTools.lookup1Values = function(entries,dim) {
 	var r = Math.exp(Math.log(entries) / dim) | 0;
 	if((Math.pow(r + 1,dim) | 0) <= entries) {
 		++r;
-	}
-	if(!(Math.pow(r + 1,dim) > entries)) {
-		throw haxe_Exception.thrown(new kha_audio2_ogg_vorbis_data_ReaderError(kha_audio2_ogg_vorbis_data_ReaderErrorType.OTHER,"",{ fileName : "kha/audio2/ogg/vorbis/VorbisTools.hx", lineNumber : 155, className : "kha.audio2.ogg.vorbis.VorbisTools", methodName : "lookup1Values"}));
-	}
-	if((Math.pow(r,dim) | 0) > entries) {
-		throw haxe_Exception.thrown(new kha_audio2_ogg_vorbis_data_ReaderError(kha_audio2_ogg_vorbis_data_ReaderErrorType.OTHER,"",{ fileName : "kha/audio2/ogg/vorbis/VorbisTools.hx", lineNumber : 156, className : "kha.audio2.ogg.vorbis.VorbisTools", methodName : "lookup1Values"}));
 	}
 	return r;
 };
@@ -12959,9 +12966,6 @@ kha_audio2_ogg_vorbis_data_Codebook.prototype = {
 	}
 	,includeInSort: function(len) {
 		if(this.sparse) {
-			if(len == 255) {
-				throw haxe_Exception.thrown(new kha_audio2_ogg_vorbis_data_ReaderError(kha_audio2_ogg_vorbis_data_ReaderErrorType.OTHER,"",{ fileName : "kha/audio2/ogg/vorbis/data/Codebook.hx", lineNumber : 201, className : "kha.audio2.ogg.vorbis.data.Codebook", methodName : "includeInSort"}));
-			}
 			return true;
 		} else if(len == 255) {
 			return false;
@@ -13013,9 +13017,6 @@ kha_audio2_ogg_vorbis_data_Codebook.prototype = {
 			++k;
 		}
 		if(k == n) {
-			if(this.sortedEntries != 0) {
-				throw haxe_Exception.thrown(new kha_audio2_ogg_vorbis_data_ReaderError(kha_audio2_ogg_vorbis_data_ReaderErrorType.OTHER,"",{ fileName : "kha/audio2/ogg/vorbis/data/Codebook.hx", lineNumber : 228, className : "kha.audio2.ogg.vorbis.data.Codebook", methodName : "computeCodewords"}));
-			}
 			return true;
 		}
 		var m = 0;
@@ -13058,9 +13059,6 @@ kha_audio2_ogg_vorbis_data_Codebook.prototype = {
 			if(z != len[i]) {
 				var y = len[i];
 				while(y > z) {
-					if(available[y] != 0) {
-						throw haxe_Exception.thrown(new kha_audio2_ogg_vorbis_data_ReaderError(kha_audio2_ogg_vorbis_data_ReaderErrorType.OTHER,"",{ fileName : "kha/audio2/ogg/vorbis/data/Codebook.hx", lineNumber : 272, className : "kha.audio2.ogg.vorbis.data.Codebook", methodName : "computeCodewords"}));
-					}
 					available[y] = res + (1 << 32 - y);
 					--y;
 				}
@@ -13076,16 +13074,7 @@ kha_audio2_ogg_vorbis_data_Codebook.prototype = {
 			while(_g < _g1) {
 				var i = _g++;
 				var len = lengths[i];
-				var tmp;
-				if(this.sparse) {
-					if(len == 255) {
-						throw haxe_Exception.thrown(new kha_audio2_ogg_vorbis_data_ReaderError(kha_audio2_ogg_vorbis_data_ReaderErrorType.OTHER,"",{ fileName : "kha/audio2/ogg/vorbis/data/Codebook.hx", lineNumber : 201, className : "kha.audio2.ogg.vorbis.data.Codebook", methodName : "includeInSort"}));
-					}
-					tmp = true;
-				} else {
-					tmp = len == 255 ? false : len > 10;
-				}
-				if(tmp) {
+				if(this.sparse ? true : len == 255 ? false : len > 10) {
 					var n = this.codewords[i];
 					n = (n & -1431655766) >>> 1 | (n & 1431655765) << 1;
 					n = (n & -858993460) >>> 2 | (n & 858993459) << 2;
@@ -13093,9 +13082,6 @@ kha_audio2_ogg_vorbis_data_Codebook.prototype = {
 					n = (n & -16711936) >>> 8 | (n & 16711935) << 8;
 					this.sortedCodewords[k++] = n >>> 16 | n << 16;
 				}
-			}
-			if(k != this.sortedEntries) {
-				throw haxe_Exception.thrown(new kha_audio2_ogg_vorbis_data_ReaderError(kha_audio2_ogg_vorbis_data_ReaderErrorType.OTHER,"",{ fileName : "kha/audio2/ogg/vorbis/data/Codebook.hx", lineNumber : 296, className : "kha.audio2.ogg.vorbis.data.Codebook", methodName : "computeSortedHuffman"}));
 			}
 		} else {
 			var _g = 0;
@@ -13118,16 +13104,7 @@ kha_audio2_ogg_vorbis_data_Codebook.prototype = {
 		while(_g < _g1) {
 			var i = _g++;
 			var huffLen = this.sparse ? lengths[values[i]] : lengths[i];
-			var tmp;
-			if(this.sparse) {
-				if(huffLen == 255) {
-					throw haxe_Exception.thrown(new kha_audio2_ogg_vorbis_data_ReaderError(kha_audio2_ogg_vorbis_data_ReaderErrorType.OTHER,"",{ fileName : "kha/audio2/ogg/vorbis/data/Codebook.hx", lineNumber : 201, className : "kha.audio2.ogg.vorbis.data.Codebook", methodName : "includeInSort"}));
-				}
-				tmp = true;
-			} else {
-				tmp = huffLen == 255 ? false : huffLen > 10;
-			}
-			if(tmp) {
+			if(this.sparse ? true : huffLen == 255 ? false : huffLen > 10) {
 				var n = this.codewords[i];
 				n = (n & -1431655766) >>> 1 | (n & 1431655765) << 1;
 				n = (n & -858993460) >>> 2 | (n & 858993459) << 2;
@@ -29322,7 +29299,7 @@ kha_graphics4_VertexStructure.prototype = {
 	}
 	,__class__: kha_graphics4_VertexStructure
 };
-var kha_input_Gamepad = function(index,id) {
+var kha_input_Gamepad = $hx_exports["kha"]["input"]["Gamepad"] = function(index,id) {
 	if(id == null) {
 		id = "unknown";
 	}
@@ -29336,7 +29313,6 @@ var kha_input_Gamepad = function(index,id) {
 	kha_input_Gamepad.instances[index] = this;
 };
 $hxClasses["kha.input.Gamepad"] = kha_input_Gamepad;
-$hx_exports["kha"]["input"]["Gamepad"] = kha_input_Gamepad;
 kha_input_Gamepad.__name__ = true;
 kha_input_Gamepad.get = function(index) {
 	if(index == null) {
@@ -29459,7 +29435,7 @@ kha_netsync_Controller.prototype = {
 	}
 	,__class__: kha_netsync_Controller
 };
-var kha_input_Keyboard = function() {
+var kha_input_Keyboard = $hx_exports["kha"]["input"]["Keyboard"] = function() {
 	kha_netsync_Controller.call(this);
 	this.downListeners = [];
 	this.upListeners = [];
@@ -29467,7 +29443,6 @@ var kha_input_Keyboard = function() {
 	kha_input_Keyboard.instance = this;
 };
 $hxClasses["kha.input.Keyboard"] = kha_input_Keyboard;
-$hx_exports["kha"]["input"]["Keyboard"] = kha_input_Keyboard;
 kha_input_Keyboard.__name__ = true;
 kha_input_Keyboard.get = function(num) {
 	if(num == null) {
@@ -29599,12 +29574,11 @@ var kha_input_MouseCursor = $hxEnums["kha.input.MouseCursor"] = { __ename__:true
 	,Custom: ($_=function(image) { return {_hx_index:14,image:image,__enum__:"kha.input.MouseCursor",toString:$estr}; },$_._hx_name="Custom",$_.__params__ = ["image"],$_)
 };
 kha_input_MouseCursor.__constructs__ = [kha_input_MouseCursor.Default,kha_input_MouseCursor.Pointer,kha_input_MouseCursor.Text,kha_input_MouseCursor.EastWestResize,kha_input_MouseCursor.NorthSouthResize,kha_input_MouseCursor.NorthEastResize,kha_input_MouseCursor.SouthEastResize,kha_input_MouseCursor.NorthWestResize,kha_input_MouseCursor.SouthWestResize,kha_input_MouseCursor.Grab,kha_input_MouseCursor.Grabbing,kha_input_MouseCursor.NotAllowed,kha_input_MouseCursor.Wait,kha_input_MouseCursor.Crosshair,kha_input_MouseCursor.Custom];
-var kha_input_Mouse = function() {
+var kha_input_Mouse = $hx_exports["kha"]["input"]["Mouse"] = function() {
 	kha_netsync_Controller.call(this);
 	kha_input_Mouse.instance = this;
 };
 $hxClasses["kha.input.Mouse"] = kha_input_Mouse;
-$hx_exports["kha"]["input"]["Mouse"] = kha_input_Mouse;
 kha_input_Mouse.__name__ = true;
 kha_input_Mouse.get = function(num) {
 	if(num == null) {
@@ -30195,14 +30169,13 @@ var kha_input_TouchDownEventBlockBehavior = $hxEnums["kha.input.TouchDownEventBl
 	,Custom: ($_=function(func) { return {_hx_index:2,func:func,__enum__:"kha.input.TouchDownEventBlockBehavior",toString:$estr}; },$_._hx_name="Custom",$_.__params__ = ["func"],$_)
 };
 kha_input_TouchDownEventBlockBehavior.__constructs__ = [kha_input_TouchDownEventBlockBehavior.Full,kha_input_TouchDownEventBlockBehavior.None,kha_input_TouchDownEventBlockBehavior.Custom];
-var kha_input_Surface = function() {
+var kha_input_Surface = $hx_exports["kha"]["input"]["Surface"] = function() {
 	this.touchStartListeners = [];
 	this.touchEndListeners = [];
 	this.moveListeners = [];
 	kha_input_Surface.instance = this;
 };
 $hxClasses["kha.input.Surface"] = kha_input_Surface;
-$hx_exports["kha"]["input"]["Surface"] = kha_input_Surface;
 kha_input_Surface.__name__ = true;
 kha_input_Surface.get = function(num) {
 	if(num == null) {
@@ -31254,6 +31227,9 @@ kha_js_Video.fromFile = function(filenames,done) {
 		if(video.element.canPlayType("video/webm") != "" && StringTools.endsWith(filename,".webm")) {
 			video.filenames.push(filename);
 		}
+		if(video.element.canPlayType("video/mp4") != "" && StringTools.endsWith(filename,".mp4")) {
+			video.filenames.push(filename);
+		}
 	}
 	video.element.addEventListener("error",$bind(video,video.errorListener),false);
 	video.element.addEventListener("canplaythrough",$bind(video,video.canPlayThroughListener),false);
@@ -31595,31 +31571,6 @@ kha_js_graphics4_Graphics.prototype = {
 			kha_SystemImpl.gl.bindFramebuffer(kha_SystemImpl.gl.READ_FRAMEBUFFER,this.renderTargetFrameBuffer);
 			kha_SystemImpl.gl.bindFramebuffer(kha_SystemImpl.gl.DRAW_FRAMEBUFFER,this.renderTargetMSAA);
 			kha_SystemImpl.gl.blitFramebuffer(0,0,this.renderTarget.get_width(),this.renderTarget.get_height(),0,0,this.renderTarget.get_width(),this.renderTarget.get_height(),16384,9728);
-		}
-		var error = kha_SystemImpl.gl.getError();
-		switch(error) {
-		case 0:
-			break;
-		case 1280:
-			haxe_Log.trace("WebGL error: Invalid enum",{ fileName : "kha/js/graphics4/Graphics.hx", lineNumber : 169, className : "kha.js.graphics4.Graphics", methodName : "end"});
-			break;
-		case 1281:
-			haxe_Log.trace("WebGL error: Invalid value",{ fileName : "kha/js/graphics4/Graphics.hx", lineNumber : 171, className : "kha.js.graphics4.Graphics", methodName : "end"});
-			break;
-		case 1282:
-			haxe_Log.trace("WebGL error: Invalid operation",{ fileName : "kha/js/graphics4/Graphics.hx", lineNumber : 173, className : "kha.js.graphics4.Graphics", methodName : "end"});
-			break;
-		case 1285:
-			haxe_Log.trace("WebGL error: Out of memory",{ fileName : "kha/js/graphics4/Graphics.hx", lineNumber : 177, className : "kha.js.graphics4.Graphics", methodName : "end"});
-			break;
-		case 1286:
-			haxe_Log.trace("WebGL error: Invalid framebuffer operation",{ fileName : "kha/js/graphics4/Graphics.hx", lineNumber : 175, className : "kha.js.graphics4.Graphics", methodName : "end"});
-			break;
-		case 37442:
-			haxe_Log.trace("WebGL error: Context lost",{ fileName : "kha/js/graphics4/Graphics.hx", lineNumber : 179, className : "kha.js.graphics4.Graphics", methodName : "end"});
-			break;
-		default:
-			haxe_Log.trace("Unknown WebGL error",{ fileName : "kha/js/graphics4/Graphics.hx", lineNumber : 181, className : "kha.js.graphics4.Graphics", methodName : "end"});
 		}
 	}
 	,flush: function() {
@@ -33923,7 +33874,7 @@ zui_Ext.colorWheel = function(ui,handle,alpha,w,h,colorPreview,picker) {
 	if(colorPreview) {
 		ui.text("",2,handle.color);
 	}
-	var pos = zui_Ext.inlineRadio(ui,zui_Handle.global.nest(7,null),["RGB","HSV","Hex"]);
+	var pos = zui_Ext.inlineRadio(ui,zui_Handle.global.nest(9,null),["RGB","HSV","Hex"]);
 	var h0 = handle.nest(0).nest(0);
 	var h1 = handle.nest(0).nest(1);
 	var h2 = handle.nest(0).nest(2);
@@ -35958,7 +35909,7 @@ zui_Zui.prototype = {
 			if(unrollUp) {
 				this._y -= this.t.ELEMENT_H * this.ops.scaleFactor * 2;
 			}
-			var comboSearchHandle = zui_Handle.global.nest(8,null);
+			var comboSearchHandle = zui_Handle.global.nest(10,null);
 			if(zui_Zui.comboFirst) {
 				comboSearchHandle.text = "";
 			}
@@ -36755,26 +36706,36 @@ kha_Scheduler.timeWarpSaveTime = 10.0;
 kha_Scheduler.DIF_COUNT = 3;
 kha_Scheduler.maxframetime = 0.5;
 kha_Scheduler.startTime = 0;
-kha_Shaders.model_fragData0 = "s2604:I3ZlcnNpb24gMTAwCnByZWNpc2lvbiBtZWRpdW1wIGZsb2F0OwpwcmVjaXNpb24gaGlnaHAgaW50OwoKc3RydWN0IFBvaW50TGlnaHQKewogICAgaGlnaHAgdmVjMyBwb3NpdGlvbjsKICAgIGhpZ2hwIGZsb2F0IGNvbnN0YW50OwogICAgaGlnaHAgZmxvYXQgbGluZWFyOwogICAgaGlnaHAgZmxvYXQgcXVhZHJhdGljOwogICAgaGlnaHAgdmVjMyBhbWJpZW50OwogICAgaGlnaHAgdmVjMyBkaWZmdXNlOwogICAgaGlnaHAgdmVjMyBzcGVjdWxhcjsKfTsKCnN0cnVjdCBNYXRlcmlhbAp7CiAgICBoaWdocCBzYW1wbGVyMkQgdGV4dHVyZV9kaWZmdXNlMTsKICAgIGhpZ2hwIHNhbXBsZXIyRCB0ZXh0dXJlX3NwZWN1bGFyMTsKICAgIGhpZ2hwIGZsb2F0IHNoaW5pbmVzczsKfTsKCnVuaWZvcm0gaGlnaHAgdmVjMyB2aWV3UG9zOwp1bmlmb3JtIFBvaW50TGlnaHQgcG9pbnRMaWdodDsKdW5pZm9ybSBNYXRlcmlhbCBtYXRlcmlhbDsKCnZhcnlpbmcgaGlnaHAgdmVjMyBOb3JtYWw7CnZhcnlpbmcgaGlnaHAgdmVjMyBGcmFnUG9zOwp2YXJ5aW5nIGhpZ2hwIHZlYzIgVGV4Q29vcmRzOwoKaGlnaHAgdmVjMyBDYWxjUG9pbnRMaWdodChQb2ludExpZ2h0IGxpZ2h0LCBoaWdocCB2ZWMzIG5vcm1hbCwgaGlnaHAgdmVjMyBmcmFnUG9zLCBoaWdocCB2ZWMzIHZpZXdEaXIpCnsKICAgIGhpZ2hwIHZlYzMgbGlnaHREaXIgPSBub3JtYWxpemUobGlnaHQucG9zaXRpb24gLSBmcmFnUG9zKTsKICAgIGhpZ2hwIGZsb2F0IGRpZmYgPSBtYXgoZG90KG5vcm1hbCwgbGlnaHREaXIpLCAwLjApOwogICAgaGlnaHAgdmVjMyByZWZsZWN0RGlyID0gcmVmbGVjdCgtbGlnaHREaXIsIG5vcm1hbCk7CiAgICBoaWdocCBmbG9hdCBzcGVjID0gcG93KG1heChkb3Qodmlld0RpciwgcmVmbGVjdERpciksIDAuMCksIG1hdGVyaWFsLnNoaW5pbmVzcyk7CiAgICBoaWdocCBmbG9hdCBfZGlzdGFuY2UgPSBsZW5ndGgobGlnaHQucG9zaXRpb24gLSBmcmFnUG9zKTsKICAgIGhpZ2hwIGZsb2F0IGF0dGVudWF0aW9uID0gMS4wIC8gKChsaWdodC5jb25zdGFudCArIChsaWdodC5saW5lYXIgKiBfZGlzdGFuY2UpKSArIChsaWdodC5xdWFkcmF0aWMgKiAoX2Rpc3RhbmNlICogX2Rpc3RhbmNlKSkpOwogICAgaGlnaHAgdmVjMyBhbWJpZW50ID0gbGlnaHQuYW1iaWVudCAqIHZlYzModGV4dHVyZTJEKG1hdGVyaWFsLnRleHR1cmVfZGlmZnVzZTEsIFRleENvb3JkcykueHl6KTsKICAgIGhpZ2hwIHZlYzMgZGlmZnVzZSA9IChsaWdodC5kaWZmdXNlICogZGlmZikgKiB2ZWMzKHRleHR1cmUyRChtYXRlcmlhbC50ZXh0dXJlX2RpZmZ1c2UxLCBUZXhDb29yZHMpLnh5eik7CiAgICBoaWdocCB2ZWMzIHNwZWN1bGFyID0gKGxpZ2h0LnNwZWN1bGFyICogc3BlYykgKiB2ZWMzKHRleHR1cmUyRChtYXRlcmlhbC50ZXh0dXJlX3NwZWN1bGFyMSwgVGV4Q29vcmRzKS54eXopOwogICAgYW1iaWVudCAqPSBhdHRlbnVhdGlvbjsKICAgIGRpZmZ1c2UgKj0gYXR0ZW51YXRpb247CiAgICBzcGVjdWxhciAqPSBhdHRlbnVhdGlvbjsKICAgIHJldHVybiAoYW1iaWVudCArIGRpZmZ1c2UpICsgc3BlY3VsYXI7Cn0KCnZvaWQgbWFpbigpCnsKICAgIGhpZ2hwIHZlYzMgbm9ybSA9IG5vcm1hbGl6ZShOb3JtYWwpOwogICAgaGlnaHAgdmVjMyB2aWV3RGlyID0gbm9ybWFsaXplKHZpZXdQb3MgLSBGcmFnUG9zKTsKICAgIGhpZ2hwIHZlYzMgcmVzdWx0ID0gdmVjMygwLjApOwogICAgUG9pbnRMaWdodCBwYXJhbSA9IHBvaW50TGlnaHQ7CiAgICBoaWdocCB2ZWMzIHBhcmFtXzEgPSBub3JtOwogICAgaGlnaHAgdmVjMyBwYXJhbV8yID0gRnJhZ1BvczsKICAgIGhpZ2hwIHZlYzMgcGFyYW1fMyA9IHZpZXdEaXI7CiAgICByZXN1bHQgKz0gQ2FsY1BvaW50TGlnaHQocGFyYW0sIHBhcmFtXzEsIHBhcmFtXzIsIHBhcmFtXzMpOwogICAgZ2xfRnJhZ0RhdGFbMF0gPSB2ZWM0KHJlc3VsdCwgMS4wKTsKfQoK";
-kha_Shaders.model_fragData1 = "s2608:I3ZlcnNpb24gMzAwIGVzCnByZWNpc2lvbiBtZWRpdW1wIGZsb2F0OwpwcmVjaXNpb24gaGlnaHAgaW50OwoKc3RydWN0IFBvaW50TGlnaHQKewogICAgaGlnaHAgdmVjMyBwb3NpdGlvbjsKICAgIGhpZ2hwIGZsb2F0IGNvbnN0YW50OwogICAgaGlnaHAgZmxvYXQgbGluZWFyOwogICAgaGlnaHAgZmxvYXQgcXVhZHJhdGljOwogICAgaGlnaHAgdmVjMyBhbWJpZW50OwogICAgaGlnaHAgdmVjMyBkaWZmdXNlOwogICAgaGlnaHAgdmVjMyBzcGVjdWxhcjsKfTsKCnN0cnVjdCBNYXRlcmlhbAp7CiAgICBoaWdocCBzYW1wbGVyMkQgdGV4dHVyZV9kaWZmdXNlMTsKICAgIGhpZ2hwIHNhbXBsZXIyRCB0ZXh0dXJlX3NwZWN1bGFyMTsKICAgIGhpZ2hwIGZsb2F0IHNoaW5pbmVzczsKfTsKCnVuaWZvcm0gaGlnaHAgdmVjMyB2aWV3UG9zOwp1bmlmb3JtIFBvaW50TGlnaHQgcG9pbnRMaWdodDsKdW5pZm9ybSBNYXRlcmlhbCBtYXRlcmlhbDsKCmluIGhpZ2hwIHZlYzMgTm9ybWFsOwppbiBoaWdocCB2ZWMzIEZyYWdQb3M7Cm91dCBoaWdocCB2ZWM0IEZyYWdDb2xvcjsKaW4gaGlnaHAgdmVjMiBUZXhDb29yZHM7CgpoaWdocCB2ZWMzIENhbGNQb2ludExpZ2h0KFBvaW50TGlnaHQgbGlnaHQsIGhpZ2hwIHZlYzMgbm9ybWFsLCBoaWdocCB2ZWMzIGZyYWdQb3MsIGhpZ2hwIHZlYzMgdmlld0RpcikKewogICAgaGlnaHAgdmVjMyBsaWdodERpciA9IG5vcm1hbGl6ZShsaWdodC5wb3NpdGlvbiAtIGZyYWdQb3MpOwogICAgaGlnaHAgZmxvYXQgZGlmZiA9IG1heChkb3Qobm9ybWFsLCBsaWdodERpciksIDAuMCk7CiAgICBoaWdocCB2ZWMzIHJlZmxlY3REaXIgPSByZWZsZWN0KC1saWdodERpciwgbm9ybWFsKTsKICAgIGhpZ2hwIGZsb2F0IHNwZWMgPSBwb3cobWF4KGRvdCh2aWV3RGlyLCByZWZsZWN0RGlyKSwgMC4wKSwgbWF0ZXJpYWwuc2hpbmluZXNzKTsKICAgIGhpZ2hwIGZsb2F0IF9kaXN0YW5jZSA9IGxlbmd0aChsaWdodC5wb3NpdGlvbiAtIGZyYWdQb3MpOwogICAgaGlnaHAgZmxvYXQgYXR0ZW51YXRpb24gPSAxLjAgLyAoKGxpZ2h0LmNvbnN0YW50ICsgKGxpZ2h0LmxpbmVhciAqIF9kaXN0YW5jZSkpICsgKGxpZ2h0LnF1YWRyYXRpYyAqIChfZGlzdGFuY2UgKiBfZGlzdGFuY2UpKSk7CiAgICBoaWdocCB2ZWMzIGFtYmllbnQgPSBsaWdodC5hbWJpZW50ICogdmVjMyh0ZXh0dXJlKG1hdGVyaWFsLnRleHR1cmVfZGlmZnVzZTEsIFRleENvb3JkcykueHl6KTsKICAgIGhpZ2hwIHZlYzMgZGlmZnVzZSA9IChsaWdodC5kaWZmdXNlICogZGlmZikgKiB2ZWMzKHRleHR1cmUobWF0ZXJpYWwudGV4dHVyZV9kaWZmdXNlMSwgVGV4Q29vcmRzKS54eXopOwogICAgaGlnaHAgdmVjMyBzcGVjdWxhciA9IChsaWdodC5zcGVjdWxhciAqIHNwZWMpICogdmVjMyh0ZXh0dXJlKG1hdGVyaWFsLnRleHR1cmVfc3BlY3VsYXIxLCBUZXhDb29yZHMpLnh5eik7CiAgICBhbWJpZW50ICo9IGF0dGVudWF0aW9uOwogICAgZGlmZnVzZSAqPSBhdHRlbnVhdGlvbjsKICAgIHNwZWN1bGFyICo9IGF0dGVudWF0aW9uOwogICAgcmV0dXJuIChhbWJpZW50ICsgZGlmZnVzZSkgKyBzcGVjdWxhcjsKfQoKdm9pZCBtYWluKCkKewogICAgaGlnaHAgdmVjMyBub3JtID0gbm9ybWFsaXplKE5vcm1hbCk7CiAgICBoaWdocCB2ZWMzIHZpZXdEaXIgPSBub3JtYWxpemUodmlld1BvcyAtIEZyYWdQb3MpOwogICAgaGlnaHAgdmVjMyByZXN1bHQgPSB2ZWMzKDAuMCk7CiAgICBQb2ludExpZ2h0IHBhcmFtID0gcG9pbnRMaWdodDsKICAgIGhpZ2hwIHZlYzMgcGFyYW1fMSA9IG5vcm07CiAgICBoaWdocCB2ZWMzIHBhcmFtXzIgPSBGcmFnUG9zOwogICAgaGlnaHAgdmVjMyBwYXJhbV8zID0gdmlld0RpcjsKICAgIHJlc3VsdCArPSBDYWxjUG9pbnRMaWdodChwYXJhbSwgcGFyYW1fMSwgcGFyYW1fMiwgcGFyYW1fMyk7CiAgICBGcmFnQ29sb3IgPSB2ZWM0KHJlc3VsdCwgMS4wKTsKfQoK";
+kha_Shaders.model_fragData0 = "s3048:I3ZlcnNpb24gMTAwCnByZWNpc2lvbiBtZWRpdW1wIGZsb2F0OwpwcmVjaXNpb24gaGlnaHAgaW50OwoKc3RydWN0IFBvaW50TGlnaHQKewogICAgaGlnaHAgdmVjMyBwb3NpdGlvbjsKICAgIGhpZ2hwIHZlYzMgZGlyZWN0aW9uOwogICAgaGlnaHAgZmxvYXQgY29uc3RhbnQ7CiAgICBoaWdocCBmbG9hdCBsaW5lYXI7CiAgICBoaWdocCBmbG9hdCBxdWFkcmF0aWM7CiAgICBoaWdocCB2ZWMzIGFtYmllbnQ7CiAgICBoaWdocCB2ZWMzIGRpZmZ1c2U7CiAgICBoaWdocCB2ZWMzIHNwZWN1bGFyOwogICAgaGlnaHAgZmxvYXQgY3V0T2ZmOwogICAgaGlnaHAgZmxvYXQgb3V0ZXJDdXRPZmY7Cn07CgpzdHJ1Y3QgTWF0ZXJpYWwKewogICAgaGlnaHAgc2FtcGxlcjJEIHRleHR1cmVfZGlmZnVzZTE7CiAgICBoaWdocCBzYW1wbGVyMkQgdGV4dHVyZV9zcGVjdWxhcjE7CiAgICBoaWdocCBmbG9hdCBzaGluaW5lc3M7Cn07Cgp1bmlmb3JtIGhpZ2hwIHZlYzMgdmlld1BvczsKdW5pZm9ybSBQb2ludExpZ2h0IHBvaW50TGlnaHQ7CnVuaWZvcm0gTWF0ZXJpYWwgbWF0ZXJpYWw7Cgp2YXJ5aW5nIGhpZ2hwIHZlYzMgTm9ybWFsOwp2YXJ5aW5nIGhpZ2hwIHZlYzMgRnJhZ1BvczsKdmFyeWluZyBoaWdocCB2ZWMyIFRleENvb3JkczsKCmhpZ2hwIHZlYzMgQ2FsY1BvaW50TGlnaHQoUG9pbnRMaWdodCBsaWdodCwgaGlnaHAgdmVjMyBub3JtYWwsIGhpZ2hwIHZlYzMgZnJhZ1BvcywgaGlnaHAgdmVjMyB2aWV3RGlyKQp7CiAgICBoaWdocCB2ZWMzIGxpZ2h0RGlyID0gbm9ybWFsaXplKGxpZ2h0LnBvc2l0aW9uIC0gZnJhZ1Bvcyk7CiAgICBoaWdocCBmbG9hdCBkaWZmID0gbWF4KGRvdChub3JtYWwsIGxpZ2h0RGlyKSwgMC4wKTsKICAgIGhpZ2hwIHZlYzMgcmVmbGVjdERpciA9IHJlZmxlY3QoLWxpZ2h0RGlyLCBub3JtYWwpOwogICAgaGlnaHAgZmxvYXQgc3BlYyA9IHBvdyhtYXgoZG90KHZpZXdEaXIsIHJlZmxlY3REaXIpLCAwLjApLCBtYXRlcmlhbC5zaGluaW5lc3MpOwogICAgaGlnaHAgZmxvYXQgX2Rpc3RhbmNlID0gbGVuZ3RoKGxpZ2h0LnBvc2l0aW9uIC0gZnJhZ1Bvcyk7CiAgICBoaWdocCBmbG9hdCBhdHRlbnVhdGlvbiA9IDEuMCAvICgobGlnaHQuY29uc3RhbnQgKyAobGlnaHQubGluZWFyICogX2Rpc3RhbmNlKSkgKyAobGlnaHQucXVhZHJhdGljICogKF9kaXN0YW5jZSAqIF9kaXN0YW5jZSkpKTsKICAgIGhpZ2hwIGZsb2F0IHRoZXRhID0gZG90KGxpZ2h0RGlyLCBub3JtYWxpemUoLWxpZ2h0LmRpcmVjdGlvbikpOwogICAgaGlnaHAgZmxvYXQgZXBzaWxvbiA9IGxpZ2h0LmN1dE9mZiAtIGxpZ2h0Lm91dGVyQ3V0T2ZmOwogICAgaGlnaHAgZmxvYXQgaW50ZW5zaXR5ID0gY2xhbXAoKHRoZXRhIC0gbGlnaHQub3V0ZXJDdXRPZmYpIC8gZXBzaWxvbiwgMC4wLCAxLjApOwogICAgaGlnaHAgdmVjMyBhbWJpZW50ID0gbGlnaHQuYW1iaWVudCAqIHZlYzModGV4dHVyZTJEKG1hdGVyaWFsLnRleHR1cmVfZGlmZnVzZTEsIFRleENvb3JkcykueHl6KTsKICAgIGhpZ2hwIHZlYzMgZGlmZnVzZSA9IChsaWdodC5kaWZmdXNlICogZGlmZikgKiB2ZWMzKHRleHR1cmUyRChtYXRlcmlhbC50ZXh0dXJlX2RpZmZ1c2UxLCBUZXhDb29yZHMpLnh5eik7CiAgICBoaWdocCB2ZWMzIHNwZWN1bGFyID0gKGxpZ2h0LnNwZWN1bGFyICogc3BlYykgKiB2ZWMzKHRleHR1cmUyRChtYXRlcmlhbC50ZXh0dXJlX3NwZWN1bGFyMSwgVGV4Q29vcmRzKS54eXopOwogICAgYW1iaWVudCAqPSAoYXR0ZW51YXRpb24gKiBpbnRlbnNpdHkpOwogICAgZGlmZnVzZSAqPSAoYXR0ZW51YXRpb24gKiBpbnRlbnNpdHkpOwogICAgc3BlY3VsYXIgKj0gKGF0dGVudWF0aW9uICogaW50ZW5zaXR5KTsKICAgIHJldHVybiAoYW1iaWVudCArIGRpZmZ1c2UpICsgc3BlY3VsYXI7Cn0KCnZvaWQgbWFpbigpCnsKICAgIGhpZ2hwIHZlYzMgbm9ybSA9IG5vcm1hbGl6ZShOb3JtYWwpOwogICAgaGlnaHAgdmVjMyB2aWV3RGlyID0gbm9ybWFsaXplKHZpZXdQb3MgLSBGcmFnUG9zKTsKICAgIGhpZ2hwIHZlYzMgcmVzdWx0ID0gdmVjMygwLjApOwogICAgUG9pbnRMaWdodCBwYXJhbSA9IHBvaW50TGlnaHQ7CiAgICBoaWdocCB2ZWMzIHBhcmFtXzEgPSBub3JtOwogICAgaGlnaHAgdmVjMyBwYXJhbV8yID0gRnJhZ1BvczsKICAgIGhpZ2hwIHZlYzMgcGFyYW1fMyA9IHZpZXdEaXI7CiAgICByZXN1bHQgKz0gQ2FsY1BvaW50TGlnaHQocGFyYW0sIHBhcmFtXzEsIHBhcmFtXzIsIHBhcmFtXzMpOwogICAgZ2xfRnJhZ0RhdGFbMF0gPSB2ZWM0KHJlc3VsdCwgMS4wKTsKfQoK";
+kha_Shaders.model_fragData1 = "s3052:I3ZlcnNpb24gMzAwIGVzCnByZWNpc2lvbiBtZWRpdW1wIGZsb2F0OwpwcmVjaXNpb24gaGlnaHAgaW50OwoKc3RydWN0IFBvaW50TGlnaHQKewogICAgaGlnaHAgdmVjMyBwb3NpdGlvbjsKICAgIGhpZ2hwIHZlYzMgZGlyZWN0aW9uOwogICAgaGlnaHAgZmxvYXQgY29uc3RhbnQ7CiAgICBoaWdocCBmbG9hdCBsaW5lYXI7CiAgICBoaWdocCBmbG9hdCBxdWFkcmF0aWM7CiAgICBoaWdocCB2ZWMzIGFtYmllbnQ7CiAgICBoaWdocCB2ZWMzIGRpZmZ1c2U7CiAgICBoaWdocCB2ZWMzIHNwZWN1bGFyOwogICAgaGlnaHAgZmxvYXQgY3V0T2ZmOwogICAgaGlnaHAgZmxvYXQgb3V0ZXJDdXRPZmY7Cn07CgpzdHJ1Y3QgTWF0ZXJpYWwKewogICAgaGlnaHAgc2FtcGxlcjJEIHRleHR1cmVfZGlmZnVzZTE7CiAgICBoaWdocCBzYW1wbGVyMkQgdGV4dHVyZV9zcGVjdWxhcjE7CiAgICBoaWdocCBmbG9hdCBzaGluaW5lc3M7Cn07Cgp1bmlmb3JtIGhpZ2hwIHZlYzMgdmlld1BvczsKdW5pZm9ybSBQb2ludExpZ2h0IHBvaW50TGlnaHQ7CnVuaWZvcm0gTWF0ZXJpYWwgbWF0ZXJpYWw7CgppbiBoaWdocCB2ZWMzIE5vcm1hbDsKaW4gaGlnaHAgdmVjMyBGcmFnUG9zOwpvdXQgaGlnaHAgdmVjNCBGcmFnQ29sb3I7CmluIGhpZ2hwIHZlYzIgVGV4Q29vcmRzOwoKaGlnaHAgdmVjMyBDYWxjUG9pbnRMaWdodChQb2ludExpZ2h0IGxpZ2h0LCBoaWdocCB2ZWMzIG5vcm1hbCwgaGlnaHAgdmVjMyBmcmFnUG9zLCBoaWdocCB2ZWMzIHZpZXdEaXIpCnsKICAgIGhpZ2hwIHZlYzMgbGlnaHREaXIgPSBub3JtYWxpemUobGlnaHQucG9zaXRpb24gLSBmcmFnUG9zKTsKICAgIGhpZ2hwIGZsb2F0IGRpZmYgPSBtYXgoZG90KG5vcm1hbCwgbGlnaHREaXIpLCAwLjApOwogICAgaGlnaHAgdmVjMyByZWZsZWN0RGlyID0gcmVmbGVjdCgtbGlnaHREaXIsIG5vcm1hbCk7CiAgICBoaWdocCBmbG9hdCBzcGVjID0gcG93KG1heChkb3Qodmlld0RpciwgcmVmbGVjdERpciksIDAuMCksIG1hdGVyaWFsLnNoaW5pbmVzcyk7CiAgICBoaWdocCBmbG9hdCBfZGlzdGFuY2UgPSBsZW5ndGgobGlnaHQucG9zaXRpb24gLSBmcmFnUG9zKTsKICAgIGhpZ2hwIGZsb2F0IGF0dGVudWF0aW9uID0gMS4wIC8gKChsaWdodC5jb25zdGFudCArIChsaWdodC5saW5lYXIgKiBfZGlzdGFuY2UpKSArIChsaWdodC5xdWFkcmF0aWMgKiAoX2Rpc3RhbmNlICogX2Rpc3RhbmNlKSkpOwogICAgaGlnaHAgZmxvYXQgdGhldGEgPSBkb3QobGlnaHREaXIsIG5vcm1hbGl6ZSgtbGlnaHQuZGlyZWN0aW9uKSk7CiAgICBoaWdocCBmbG9hdCBlcHNpbG9uID0gbGlnaHQuY3V0T2ZmIC0gbGlnaHQub3V0ZXJDdXRPZmY7CiAgICBoaWdocCBmbG9hdCBpbnRlbnNpdHkgPSBjbGFtcCgodGhldGEgLSBsaWdodC5vdXRlckN1dE9mZikgLyBlcHNpbG9uLCAwLjAsIDEuMCk7CiAgICBoaWdocCB2ZWMzIGFtYmllbnQgPSBsaWdodC5hbWJpZW50ICogdmVjMyh0ZXh0dXJlKG1hdGVyaWFsLnRleHR1cmVfZGlmZnVzZTEsIFRleENvb3JkcykueHl6KTsKICAgIGhpZ2hwIHZlYzMgZGlmZnVzZSA9IChsaWdodC5kaWZmdXNlICogZGlmZikgKiB2ZWMzKHRleHR1cmUobWF0ZXJpYWwudGV4dHVyZV9kaWZmdXNlMSwgVGV4Q29vcmRzKS54eXopOwogICAgaGlnaHAgdmVjMyBzcGVjdWxhciA9IChsaWdodC5zcGVjdWxhciAqIHNwZWMpICogdmVjMyh0ZXh0dXJlKG1hdGVyaWFsLnRleHR1cmVfc3BlY3VsYXIxLCBUZXhDb29yZHMpLnh5eik7CiAgICBhbWJpZW50ICo9IChhdHRlbnVhdGlvbiAqIGludGVuc2l0eSk7CiAgICBkaWZmdXNlICo9IChhdHRlbnVhdGlvbiAqIGludGVuc2l0eSk7CiAgICBzcGVjdWxhciAqPSAoYXR0ZW51YXRpb24gKiBpbnRlbnNpdHkpOwogICAgcmV0dXJuIChhbWJpZW50ICsgZGlmZnVzZSkgKyBzcGVjdWxhcjsKfQoKdm9pZCBtYWluKCkKewogICAgaGlnaHAgdmVjMyBub3JtID0gbm9ybWFsaXplKE5vcm1hbCk7CiAgICBoaWdocCB2ZWMzIHZpZXdEaXIgPSBub3JtYWxpemUodmlld1BvcyAtIEZyYWdQb3MpOwogICAgaGlnaHAgdmVjMyByZXN1bHQgPSB2ZWMzKDAuMCk7CiAgICBQb2ludExpZ2h0IHBhcmFtID0gcG9pbnRMaWdodDsKICAgIGhpZ2hwIHZlYzMgcGFyYW1fMSA9IG5vcm07CiAgICBoaWdocCB2ZWMzIHBhcmFtXzIgPSBGcmFnUG9zOwogICAgaGlnaHAgdmVjMyBwYXJhbV8zID0gdmlld0RpcjsKICAgIHJlc3VsdCArPSBDYWxjUG9pbnRMaWdodChwYXJhbSwgcGFyYW1fMSwgcGFyYW1fMiwgcGFyYW1fMyk7CiAgICBGcmFnQ29sb3IgPSB2ZWM0KHJlc3VsdCwgMS4wKTsKfQoK";
+kha_Shaders.model_fragData2 = "s2760:I3ZlcnNpb24gMTAwCnByZWNpc2lvbiBtZWRpdW1wIGZsb2F0OwpwcmVjaXNpb24gbWVkaXVtcCBpbnQ7CgpzdHJ1Y3QgUG9pbnRMaWdodAp7CiAgICB2ZWMzIHBvc2l0aW9uOwogICAgdmVjMyBkaXJlY3Rpb247CiAgICBmbG9hdCBjb25zdGFudDsKICAgIGZsb2F0IGxpbmVhcjsKICAgIGZsb2F0IHF1YWRyYXRpYzsKICAgIHZlYzMgYW1iaWVudDsKICAgIHZlYzMgZGlmZnVzZTsKICAgIHZlYzMgc3BlY3VsYXI7CiAgICBmbG9hdCBjdXRPZmY7CiAgICBmbG9hdCBvdXRlckN1dE9mZjsKfTsKCnN0cnVjdCBNYXRlcmlhbAp7CiAgICBtZWRpdW1wIHNhbXBsZXIyRCB0ZXh0dXJlX2RpZmZ1c2UxOwogICAgbWVkaXVtcCBzYW1wbGVyMkQgdGV4dHVyZV9zcGVjdWxhcjE7CiAgICBmbG9hdCBzaGluaW5lc3M7Cn07Cgp1bmlmb3JtIHZlYzMgdmlld1BvczsKdW5pZm9ybSBQb2ludExpZ2h0IHBvaW50TGlnaHQ7CnVuaWZvcm0gTWF0ZXJpYWwgbWF0ZXJpYWw7Cgp2YXJ5aW5nIHZlYzMgTm9ybWFsOwp2YXJ5aW5nIHZlYzMgRnJhZ1BvczsKdmFyeWluZyB2ZWMyIFRleENvb3JkczsKCnZlYzMgQ2FsY1BvaW50TGlnaHQoUG9pbnRMaWdodCBsaWdodCwgdmVjMyBub3JtYWwsIHZlYzMgZnJhZ1BvcywgdmVjMyB2aWV3RGlyKQp7CiAgICB2ZWMzIGxpZ2h0RGlyID0gbm9ybWFsaXplKGxpZ2h0LnBvc2l0aW9uIC0gZnJhZ1Bvcyk7CiAgICBmbG9hdCBkaWZmID0gbWF4KGRvdChub3JtYWwsIGxpZ2h0RGlyKSwgMC4wKTsKICAgIHZlYzMgcmVmbGVjdERpciA9IHJlZmxlY3QoLWxpZ2h0RGlyLCBub3JtYWwpOwogICAgZmxvYXQgc3BlYyA9IHBvdyhtYXgoZG90KHZpZXdEaXIsIHJlZmxlY3REaXIpLCAwLjApLCBtYXRlcmlhbC5zaGluaW5lc3MpOwogICAgZmxvYXQgX2Rpc3RhbmNlID0gbGVuZ3RoKGxpZ2h0LnBvc2l0aW9uIC0gZnJhZ1Bvcyk7CiAgICBmbG9hdCBhdHRlbnVhdGlvbiA9IDEuMCAvICgobGlnaHQuY29uc3RhbnQgKyAobGlnaHQubGluZWFyICogX2Rpc3RhbmNlKSkgKyAobGlnaHQucXVhZHJhdGljICogKF9kaXN0YW5jZSAqIF9kaXN0YW5jZSkpKTsKICAgIGZsb2F0IHRoZXRhID0gZG90KGxpZ2h0RGlyLCBub3JtYWxpemUoLWxpZ2h0LmRpcmVjdGlvbikpOwogICAgZmxvYXQgZXBzaWxvbiA9IGxpZ2h0LmN1dE9mZiAtIGxpZ2h0Lm91dGVyQ3V0T2ZmOwogICAgZmxvYXQgaW50ZW5zaXR5ID0gY2xhbXAoKHRoZXRhIC0gbGlnaHQub3V0ZXJDdXRPZmYpIC8gZXBzaWxvbiwgMC4wLCAxLjApOwogICAgdmVjMyBhbWJpZW50ID0gbGlnaHQuYW1iaWVudCAqIHZlYzModGV4dHVyZTJEKG1hdGVyaWFsLnRleHR1cmVfZGlmZnVzZTEsIFRleENvb3JkcykueHl6KTsKICAgIHZlYzMgZGlmZnVzZSA9IChsaWdodC5kaWZmdXNlICogZGlmZikgKiB2ZWMzKHRleHR1cmUyRChtYXRlcmlhbC50ZXh0dXJlX2RpZmZ1c2UxLCBUZXhDb29yZHMpLnh5eik7CiAgICB2ZWMzIHNwZWN1bGFyID0gKGxpZ2h0LnNwZWN1bGFyICogc3BlYykgKiB2ZWMzKHRleHR1cmUyRChtYXRlcmlhbC50ZXh0dXJlX3NwZWN1bGFyMSwgVGV4Q29vcmRzKS54eXopOwogICAgYW1iaWVudCAqPSAoYXR0ZW51YXRpb24gKiBpbnRlbnNpdHkpOwogICAgZGlmZnVzZSAqPSAoYXR0ZW51YXRpb24gKiBpbnRlbnNpdHkpOwogICAgc3BlY3VsYXIgKj0gKGF0dGVudWF0aW9uICogaW50ZW5zaXR5KTsKICAgIHJldHVybiAoYW1iaWVudCArIGRpZmZ1c2UpICsgc3BlY3VsYXI7Cn0KCnZvaWQgbWFpbigpCnsKICAgIHZlYzMgbm9ybSA9IG5vcm1hbGl6ZShOb3JtYWwpOwogICAgdmVjMyB2aWV3RGlyID0gbm9ybWFsaXplKHZpZXdQb3MgLSBGcmFnUG9zKTsKICAgIHZlYzMgcmVzdWx0ID0gdmVjMygwLjApOwogICAgUG9pbnRMaWdodCBwYXJhbSA9IHBvaW50TGlnaHQ7CiAgICB2ZWMzIHBhcmFtXzEgPSBub3JtOwogICAgdmVjMyBwYXJhbV8yID0gRnJhZ1BvczsKICAgIHZlYzMgcGFyYW1fMyA9IHZpZXdEaXI7CiAgICByZXN1bHQgKz0gQ2FsY1BvaW50TGlnaHQocGFyYW0sIHBhcmFtXzEsIHBhcmFtXzIsIHBhcmFtXzMpOwogICAgZ2xfRnJhZ0RhdGFbMF0gPSB2ZWM0KHJlc3VsdCwgMS4wKTsKfQoK";
 kha_Shaders.model_vertData0 = "s883:I3ZlcnNpb24gMTAwCgptYXQ0IHRyYW5zcG9zZShtYXQ0IG0pIHsgcmV0dXJuIG1hdDQobVswXVswXSwgbVsxXVswXSwgbVsyXVswXSwgbVszXVswXSwgbVswXVsxXSwgbVsxXVsxXSwgbVsyXVsxXSwgbVszXVsxXSwgbVswXVsyXSwgbVsxXVsyXSwgbVsyXVsyXSwgbVszXVsyXSwgbVswXVszXSwgbVsxXVszXSwgbVsyXVszXSwgbVszXVszXSk7IH0KCnVuaWZvcm0gbWF0NCBtb2RlbDsKdW5pZm9ybSBtYXQ0IHByb2o7CnVuaWZvcm0gbWF0NCB2aWV3OwoKdmFyeWluZyB2ZWMzIEZyYWdQb3M7CmF0dHJpYnV0ZSB2ZWMzIGFQb3M7CnZhcnlpbmcgdmVjMyBOb3JtYWw7CmF0dHJpYnV0ZSB2ZWMzIGFOb3JtYWw7CnZhcnlpbmcgdmVjMiBUZXhDb29yZHM7CmF0dHJpYnV0ZSB2ZWMyIGFUZXhDb29yZHM7Cgp2b2lkIG1haW4oKQp7CiAgICBGcmFnUG9zID0gdmVjMygobW9kZWwgKiB2ZWM0KGFQb3MsIDEuMCkpLnh5eik7CiAgICBtYXQ0IF8zMSA9IHRyYW5zcG9zZShpbnZlcnNlKG1vZGVsKSk7CiAgICBOb3JtYWwgPSBtYXQzKF8zMVswXS54eXosIF8zMVsxXS54eXosIF8zMVsyXS54eXopICogYU5vcm1hbDsKICAgIFRleENvb3JkcyA9IGFUZXhDb29yZHM7CiAgICBnbF9Qb3NpdGlvbiA9ICgocHJvaiAqIHZpZXcpICogbW9kZWwpICogdmVjNChhUG9zLCAxLjApOwp9Cgo";
 kha_Shaders.model_vertData1 = "s596:I3ZlcnNpb24gMzAwIGVzCgp1bmlmb3JtIG1hdDQgbW9kZWw7CnVuaWZvcm0gbWF0NCBwcm9qOwp1bmlmb3JtIG1hdDQgdmlldzsKCm91dCB2ZWMzIEZyYWdQb3M7CmluIHZlYzMgYVBvczsKb3V0IHZlYzMgTm9ybWFsOwppbiB2ZWMzIGFOb3JtYWw7Cm91dCB2ZWMyIFRleENvb3JkczsKaW4gdmVjMiBhVGV4Q29vcmRzOwoKdm9pZCBtYWluKCkKewogICAgRnJhZ1BvcyA9IHZlYzMoKG1vZGVsICogdmVjNChhUG9zLCAxLjApKS54eXopOwogICAgbWF0NCBfMzEgPSB0cmFuc3Bvc2UoaW52ZXJzZShtb2RlbCkpOwogICAgTm9ybWFsID0gbWF0MyhfMzFbMF0ueHl6LCBfMzFbMV0ueHl6LCBfMzFbMl0ueHl6KSAqIGFOb3JtYWw7CiAgICBUZXhDb29yZHMgPSBhVGV4Q29vcmRzOwogICAgZ2xfUG9zaXRpb24gPSAoKHByb2ogKiB2aWV3KSAqIG1vZGVsKSAqIHZlYzQoYVBvcywgMS4wKTsKfQoK";
+kha_Shaders.model_vertData2 = "s990:I3ZlcnNpb24gMTAwCgptYXQ0IHRyYW5zcG9zZShtYXQ0IG0pIHsgcmV0dXJuIG1hdDQobVswXVswXSwgbVsxXVswXSwgbVsyXVswXSwgbVszXVswXSwgbVswXVsxXSwgbVsxXVsxXSwgbVsyXVsxXSwgbVszXVsxXSwgbVswXVsyXSwgbVsxXVsyXSwgbVsyXVsyXSwgbVszXVsyXSwgbVswXVszXSwgbVsxXVszXSwgbVsyXVszXSwgbVszXVszXSk7IH0KCnVuaWZvcm0gbWVkaXVtcCBtYXQ0IG1vZGVsOwp1bmlmb3JtIG1lZGl1bXAgbWF0NCBwcm9qOwp1bmlmb3JtIG1lZGl1bXAgbWF0NCB2aWV3OwoKdmFyeWluZyBtZWRpdW1wIHZlYzMgRnJhZ1BvczsKYXR0cmlidXRlIG1lZGl1bXAgdmVjMyBhUG9zOwp2YXJ5aW5nIG1lZGl1bXAgdmVjMyBOb3JtYWw7CmF0dHJpYnV0ZSBtZWRpdW1wIHZlYzMgYU5vcm1hbDsKdmFyeWluZyBtZWRpdW1wIHZlYzIgVGV4Q29vcmRzOwphdHRyaWJ1dGUgbWVkaXVtcCB2ZWMyIGFUZXhDb29yZHM7Cgp2b2lkIG1haW4oKQp7CiAgICBGcmFnUG9zID0gdmVjMygobW9kZWwgKiB2ZWM0KGFQb3MsIDEuMCkpLnh5eik7CiAgICBtZWRpdW1wIG1hdDQgXzMxID0gdHJhbnNwb3NlKGludmVyc2UobW9kZWwpKTsKICAgIE5vcm1hbCA9IG1hdDMoXzMxWzBdLnh5eiwgXzMxWzFdLnh5eiwgXzMxWzJdLnh5eikgKiBhTm9ybWFsOwogICAgVGV4Q29vcmRzID0gYVRleENvb3JkczsKICAgIGdsX1Bvc2l0aW9uID0gKChwcm9qICogdmlldykgKiBtb2RlbCkgKiB2ZWM0KGFQb3MsIDEuMCk7Cn0KCg";
 kha_Shaders.painter_colored_fragData0 = "s198:I3ZlcnNpb24gMTAwCnByZWNpc2lvbiBtZWRpdW1wIGZsb2F0OwpwcmVjaXNpb24gaGlnaHAgaW50OwoKdmFyeWluZyBoaWdocCB2ZWM0IGZyYWdtZW50Q29sb3I7Cgp2b2lkIG1haW4oKQp7CiAgICBnbF9GcmFnRGF0YVswXSA9IGZyYWdtZW50Q29sb3I7Cn0KCg";
 kha_Shaders.painter_colored_fragData1 = "s223:I3ZlcnNpb24gMzAwIGVzCnByZWNpc2lvbiBtZWRpdW1wIGZsb2F0OwpwcmVjaXNpb24gaGlnaHAgaW50OwoKb3V0IGhpZ2hwIHZlYzQgRnJhZ0NvbG9yOwppbiBoaWdocCB2ZWM0IGZyYWdtZW50Q29sb3I7Cgp2b2lkIG1haW4oKQp7CiAgICBGcmFnQ29sb3IgPSBmcmFnbWVudENvbG9yOwp9Cgo";
+kha_Shaders.painter_colored_fragData2 = "s192:I3ZlcnNpb24gMTAwCnByZWNpc2lvbiBtZWRpdW1wIGZsb2F0OwpwcmVjaXNpb24gbWVkaXVtcCBpbnQ7Cgp2YXJ5aW5nIHZlYzQgZnJhZ21lbnRDb2xvcjsKCnZvaWQgbWFpbigpCnsKICAgIGdsX0ZyYWdEYXRhWzBdID0gZnJhZ21lbnRDb2xvcjsKfQoK";
 kha_Shaders.painter_colored_vertData0 = "s331:I3ZlcnNpb24gMTAwCgp1bmlmb3JtIG1hdDQgcHJvamVjdGlvbk1hdHJpeDsKCmF0dHJpYnV0ZSB2ZWMzIHZlcnRleFBvc2l0aW9uOwp2YXJ5aW5nIHZlYzQgZnJhZ21lbnRDb2xvcjsKYXR0cmlidXRlIHZlYzQgdmVydGV4Q29sb3I7Cgp2b2lkIG1haW4oKQp7CiAgICBnbF9Qb3NpdGlvbiA9IHByb2plY3Rpb25NYXRyaXggKiB2ZWM0KHZlcnRleFBvc2l0aW9uLCAxLjApOwogICAgZnJhZ21lbnRDb2xvciA9IHZlcnRleENvbG9yOwp9Cgo";
 kha_Shaders.painter_colored_vertData1 = "s311:I3ZlcnNpb24gMzAwIGVzCgp1bmlmb3JtIG1hdDQgcHJvamVjdGlvbk1hdHJpeDsKCmluIHZlYzMgdmVydGV4UG9zaXRpb247Cm91dCB2ZWM0IGZyYWdtZW50Q29sb3I7CmluIHZlYzQgdmVydGV4Q29sb3I7Cgp2b2lkIG1haW4oKQp7CiAgICBnbF9Qb3NpdGlvbiA9IHByb2plY3Rpb25NYXRyaXggKiB2ZWM0KHZlcnRleFBvc2l0aW9uLCAxLjApOwogICAgZnJhZ21lbnRDb2xvciA9IHZlcnRleENvbG9yOwp9Cgo";
+kha_Shaders.painter_colored_vertData2 = "s374:I3ZlcnNpb24gMTAwCgp1bmlmb3JtIG1lZGl1bXAgbWF0NCBwcm9qZWN0aW9uTWF0cml4OwoKYXR0cmlidXRlIG1lZGl1bXAgdmVjMyB2ZXJ0ZXhQb3NpdGlvbjsKdmFyeWluZyBtZWRpdW1wIHZlYzQgZnJhZ21lbnRDb2xvcjsKYXR0cmlidXRlIG1lZGl1bXAgdmVjNCB2ZXJ0ZXhDb2xvcjsKCnZvaWQgbWFpbigpCnsKICAgIGdsX1Bvc2l0aW9uID0gcHJvamVjdGlvbk1hdHJpeCAqIHZlYzQodmVydGV4UG9zaXRpb24sIDEuMCk7CiAgICBmcmFnbWVudENvbG9yID0gdmVydGV4Q29sb3I7Cn0KCg";
 kha_Shaders.painter_image_fragData0 = "s471:I3ZlcnNpb24gMTAwCnByZWNpc2lvbiBtZWRpdW1wIGZsb2F0OwpwcmVjaXNpb24gaGlnaHAgaW50OwoKdW5pZm9ybSBoaWdocCBzYW1wbGVyMkQgdGV4OwoKdmFyeWluZyBoaWdocCB2ZWMyIHRleENvb3JkOwp2YXJ5aW5nIGhpZ2hwIHZlYzQgY29sb3I7Cgp2b2lkIG1haW4oKQp7CiAgICBoaWdocCB2ZWM0IHRleGNvbG9yID0gdGV4dHVyZTJEKHRleCwgdGV4Q29vcmQpICogY29sb3I7CiAgICBoaWdocCB2ZWMzIF8zMiA9IHRleGNvbG9yLnh5eiAqIGNvbG9yLnc7CiAgICB0ZXhjb2xvciA9IHZlYzQoXzMyLngsIF8zMi55LCBfMzIueiwgdGV4Y29sb3Iudyk7CiAgICBnbF9GcmFnRGF0YVswXSA9IHRleGNvbG9yOwp9Cgo";
 kha_Shaders.painter_image_fragData1 = "s487:I3ZlcnNpb24gMzAwIGVzCnByZWNpc2lvbiBtZWRpdW1wIGZsb2F0OwpwcmVjaXNpb24gaGlnaHAgaW50OwoKdW5pZm9ybSBoaWdocCBzYW1wbGVyMkQgdGV4OwoKaW4gaGlnaHAgdmVjMiB0ZXhDb29yZDsKaW4gaGlnaHAgdmVjNCBjb2xvcjsKb3V0IGhpZ2hwIHZlYzQgRnJhZ0NvbG9yOwoKdm9pZCBtYWluKCkKewogICAgaGlnaHAgdmVjNCB0ZXhjb2xvciA9IHRleHR1cmUodGV4LCB0ZXhDb29yZCkgKiBjb2xvcjsKICAgIGhpZ2hwIHZlYzMgXzMyID0gdGV4Y29sb3IueHl6ICogY29sb3IudzsKICAgIHRleGNvbG9yID0gdmVjNChfMzIueCwgXzMyLnksIF8zMi56LCB0ZXhjb2xvci53KTsKICAgIEZyYWdDb2xvciA9IHRleGNvbG9yOwp9Cgo";
+kha_Shaders.painter_image_fragData2 = "s444:I3ZlcnNpb24gMTAwCnByZWNpc2lvbiBtZWRpdW1wIGZsb2F0OwpwcmVjaXNpb24gbWVkaXVtcCBpbnQ7Cgp1bmlmb3JtIG1lZGl1bXAgc2FtcGxlcjJEIHRleDsKCnZhcnlpbmcgdmVjMiB0ZXhDb29yZDsKdmFyeWluZyB2ZWM0IGNvbG9yOwoKdm9pZCBtYWluKCkKewogICAgdmVjNCB0ZXhjb2xvciA9IHRleHR1cmUyRCh0ZXgsIHRleENvb3JkKSAqIGNvbG9yOwogICAgdmVjMyBfMzIgPSB0ZXhjb2xvci54eXogKiBjb2xvci53OwogICAgdGV4Y29sb3IgPSB2ZWM0KF8zMi54LCBfMzIueSwgXzMyLnosIHRleGNvbG9yLncpOwogICAgZ2xfRnJhZ0RhdGFbMF0gPSB0ZXhjb2xvcjsKfQoK";
 kha_Shaders.painter_image_vertData0 = "s407:I3ZlcnNpb24gMTAwCgp1bmlmb3JtIG1hdDQgcHJvamVjdGlvbk1hdHJpeDsKCmF0dHJpYnV0ZSB2ZWMzIHZlcnRleFBvc2l0aW9uOwp2YXJ5aW5nIHZlYzIgdGV4Q29vcmQ7CmF0dHJpYnV0ZSB2ZWMyIHZlcnRleFVWOwp2YXJ5aW5nIHZlYzQgY29sb3I7CmF0dHJpYnV0ZSB2ZWM0IHZlcnRleENvbG9yOwoKdm9pZCBtYWluKCkKewogICAgZ2xfUG9zaXRpb24gPSBwcm9qZWN0aW9uTWF0cml4ICogdmVjNCh2ZXJ0ZXhQb3NpdGlvbiwgMS4wKTsKICAgIHRleENvb3JkID0gdmVydGV4VVY7CiAgICBjb2xvciA9IHZlcnRleENvbG9yOwp9Cgo";
 kha_Shaders.painter_image_vertData1 = "s372:I3ZlcnNpb24gMzAwIGVzCgp1bmlmb3JtIG1hdDQgcHJvamVjdGlvbk1hdHJpeDsKCmluIHZlYzMgdmVydGV4UG9zaXRpb247Cm91dCB2ZWMyIHRleENvb3JkOwppbiB2ZWMyIHZlcnRleFVWOwpvdXQgdmVjNCBjb2xvcjsKaW4gdmVjNCB2ZXJ0ZXhDb2xvcjsKCnZvaWQgbWFpbigpCnsKICAgIGdsX1Bvc2l0aW9uID0gcHJvamVjdGlvbk1hdHJpeCAqIHZlYzQodmVydGV4UG9zaXRpb24sIDEuMCk7CiAgICB0ZXhDb29yZCA9IHZlcnRleFVWOwogICAgY29sb3IgPSB2ZXJ0ZXhDb2xvcjsKfQoK";
+kha_Shaders.painter_image_vertData2 = "s471:I3ZlcnNpb24gMTAwCgp1bmlmb3JtIG1lZGl1bXAgbWF0NCBwcm9qZWN0aW9uTWF0cml4OwoKYXR0cmlidXRlIG1lZGl1bXAgdmVjMyB2ZXJ0ZXhQb3NpdGlvbjsKdmFyeWluZyBtZWRpdW1wIHZlYzIgdGV4Q29vcmQ7CmF0dHJpYnV0ZSBtZWRpdW1wIHZlYzIgdmVydGV4VVY7CnZhcnlpbmcgbWVkaXVtcCB2ZWM0IGNvbG9yOwphdHRyaWJ1dGUgbWVkaXVtcCB2ZWM0IHZlcnRleENvbG9yOwoKdm9pZCBtYWluKCkKewogICAgZ2xfUG9zaXRpb24gPSBwcm9qZWN0aW9uTWF0cml4ICogdmVjNCh2ZXJ0ZXhQb3NpdGlvbiwgMS4wKTsKICAgIHRleENvb3JkID0gdmVydGV4VVY7CiAgICBjb2xvciA9IHZlcnRleENvbG9yOwp9Cgo";
 kha_Shaders.painter_text_fragData0 = "s351:I3ZlcnNpb24gMTAwCnByZWNpc2lvbiBtZWRpdW1wIGZsb2F0OwpwcmVjaXNpb24gaGlnaHAgaW50OwoKdW5pZm9ybSBoaWdocCBzYW1wbGVyMkQgdGV4OwoKdmFyeWluZyBoaWdocCB2ZWM0IGZyYWdtZW50Q29sb3I7CnZhcnlpbmcgaGlnaHAgdmVjMiB0ZXhDb29yZDsKCnZvaWQgbWFpbigpCnsKICAgIGdsX0ZyYWdEYXRhWzBdID0gdmVjNChmcmFnbWVudENvbG9yLnh5eiwgdGV4dHVyZTJEKHRleCwgdGV4Q29vcmQpLnggKiBmcmFnbWVudENvbG9yLncpOwp9Cgo";
 kha_Shaders.painter_text_fragData1 = "s367:I3ZlcnNpb24gMzAwIGVzCnByZWNpc2lvbiBtZWRpdW1wIGZsb2F0OwpwcmVjaXNpb24gaGlnaHAgaW50OwoKdW5pZm9ybSBoaWdocCBzYW1wbGVyMkQgdGV4OwoKb3V0IGhpZ2hwIHZlYzQgRnJhZ0NvbG9yOwppbiBoaWdocCB2ZWM0IGZyYWdtZW50Q29sb3I7CmluIGhpZ2hwIHZlYzIgdGV4Q29vcmQ7Cgp2b2lkIG1haW4oKQp7CiAgICBGcmFnQ29sb3IgPSB2ZWM0KGZyYWdtZW50Q29sb3IueHl6LCB0ZXh0dXJlKHRleCwgdGV4Q29vcmQpLnggKiBmcmFnbWVudENvbG9yLncpOwp9Cgo";
+kha_Shaders.painter_text_fragData2 = "s340:I3ZlcnNpb24gMTAwCnByZWNpc2lvbiBtZWRpdW1wIGZsb2F0OwpwcmVjaXNpb24gbWVkaXVtcCBpbnQ7Cgp1bmlmb3JtIG1lZGl1bXAgc2FtcGxlcjJEIHRleDsKCnZhcnlpbmcgdmVjNCBmcmFnbWVudENvbG9yOwp2YXJ5aW5nIHZlYzIgdGV4Q29vcmQ7Cgp2b2lkIG1haW4oKQp7CiAgICBnbF9GcmFnRGF0YVswXSA9IHZlYzQoZnJhZ21lbnRDb2xvci54eXosIHRleHR1cmUyRCh0ZXgsIHRleENvb3JkKS54ICogZnJhZ21lbnRDb2xvci53KTsKfQoK";
 kha_Shaders.painter_text_vertData0 = "s428:I3ZlcnNpb24gMTAwCgp1bmlmb3JtIG1hdDQgcHJvamVjdGlvbk1hdHJpeDsKCmF0dHJpYnV0ZSB2ZWMzIHZlcnRleFBvc2l0aW9uOwp2YXJ5aW5nIHZlYzIgdGV4Q29vcmQ7CmF0dHJpYnV0ZSB2ZWMyIHZlcnRleFVWOwp2YXJ5aW5nIHZlYzQgZnJhZ21lbnRDb2xvcjsKYXR0cmlidXRlIHZlYzQgdmVydGV4Q29sb3I7Cgp2b2lkIG1haW4oKQp7CiAgICBnbF9Qb3NpdGlvbiA9IHByb2plY3Rpb25NYXRyaXggKiB2ZWM0KHZlcnRleFBvc2l0aW9uLCAxLjApOwogICAgdGV4Q29vcmQgPSB2ZXJ0ZXhVVjsKICAgIGZyYWdtZW50Q29sb3IgPSB2ZXJ0ZXhDb2xvcjsKfQoK";
 kha_Shaders.painter_text_vertData1 = "s394:I3ZlcnNpb24gMzAwIGVzCgp1bmlmb3JtIG1hdDQgcHJvamVjdGlvbk1hdHJpeDsKCmluIHZlYzMgdmVydGV4UG9zaXRpb247Cm91dCB2ZWMyIHRleENvb3JkOwppbiB2ZWMyIHZlcnRleFVWOwpvdXQgdmVjNCBmcmFnbWVudENvbG9yOwppbiB2ZWM0IHZlcnRleENvbG9yOwoKdm9pZCBtYWluKCkKewogICAgZ2xfUG9zaXRpb24gPSBwcm9qZWN0aW9uTWF0cml4ICogdmVjNCh2ZXJ0ZXhQb3NpdGlvbiwgMS4wKTsKICAgIHRleENvb3JkID0gdmVydGV4VVY7CiAgICBmcmFnbWVudENvbG9yID0gdmVydGV4Q29sb3I7Cn0KCg";
+kha_Shaders.painter_text_vertData2 = "s492:I3ZlcnNpb24gMTAwCgp1bmlmb3JtIG1lZGl1bXAgbWF0NCBwcm9qZWN0aW9uTWF0cml4OwoKYXR0cmlidXRlIG1lZGl1bXAgdmVjMyB2ZXJ0ZXhQb3NpdGlvbjsKdmFyeWluZyBtZWRpdW1wIHZlYzIgdGV4Q29vcmQ7CmF0dHJpYnV0ZSBtZWRpdW1wIHZlYzIgdmVydGV4VVY7CnZhcnlpbmcgbWVkaXVtcCB2ZWM0IGZyYWdtZW50Q29sb3I7CmF0dHJpYnV0ZSBtZWRpdW1wIHZlYzQgdmVydGV4Q29sb3I7Cgp2b2lkIG1haW4oKQp7CiAgICBnbF9Qb3NpdGlvbiA9IHByb2plY3Rpb25NYXRyaXggKiB2ZWM0KHZlcnRleFBvc2l0aW9uLCAxLjApOwogICAgdGV4Q29vcmQgPSB2ZXJ0ZXhVVjsKICAgIGZyYWdtZW50Q29sb3IgPSB2ZXJ0ZXhDb2xvcjsKfQoK";
 kha_Shaders.painter_video_fragData0 = "s471:I3ZlcnNpb24gMTAwCnByZWNpc2lvbiBtZWRpdW1wIGZsb2F0OwpwcmVjaXNpb24gaGlnaHAgaW50OwoKdW5pZm9ybSBoaWdocCBzYW1wbGVyMkQgdGV4OwoKdmFyeWluZyBoaWdocCB2ZWMyIHRleENvb3JkOwp2YXJ5aW5nIGhpZ2hwIHZlYzQgY29sb3I7Cgp2b2lkIG1haW4oKQp7CiAgICBoaWdocCB2ZWM0IHRleGNvbG9yID0gdGV4dHVyZTJEKHRleCwgdGV4Q29vcmQpICogY29sb3I7CiAgICBoaWdocCB2ZWMzIF8zMiA9IHRleGNvbG9yLnh5eiAqIGNvbG9yLnc7CiAgICB0ZXhjb2xvciA9IHZlYzQoXzMyLngsIF8zMi55LCBfMzIueiwgdGV4Y29sb3Iudyk7CiAgICBnbF9GcmFnRGF0YVswXSA9IHRleGNvbG9yOwp9Cgo";
 kha_Shaders.painter_video_fragData1 = "s487:I3ZlcnNpb24gMzAwIGVzCnByZWNpc2lvbiBtZWRpdW1wIGZsb2F0OwpwcmVjaXNpb24gaGlnaHAgaW50OwoKdW5pZm9ybSBoaWdocCBzYW1wbGVyMkQgdGV4OwoKaW4gaGlnaHAgdmVjMiB0ZXhDb29yZDsKaW4gaGlnaHAgdmVjNCBjb2xvcjsKb3V0IGhpZ2hwIHZlYzQgRnJhZ0NvbG9yOwoKdm9pZCBtYWluKCkKewogICAgaGlnaHAgdmVjNCB0ZXhjb2xvciA9IHRleHR1cmUodGV4LCB0ZXhDb29yZCkgKiBjb2xvcjsKICAgIGhpZ2hwIHZlYzMgXzMyID0gdGV4Y29sb3IueHl6ICogY29sb3IudzsKICAgIHRleGNvbG9yID0gdmVjNChfMzIueCwgXzMyLnksIF8zMi56LCB0ZXhjb2xvci53KTsKICAgIEZyYWdDb2xvciA9IHRleGNvbG9yOwp9Cgo";
+kha_Shaders.painter_video_fragData2 = "s444:I3ZlcnNpb24gMTAwCnByZWNpc2lvbiBtZWRpdW1wIGZsb2F0OwpwcmVjaXNpb24gbWVkaXVtcCBpbnQ7Cgp1bmlmb3JtIG1lZGl1bXAgc2FtcGxlcjJEIHRleDsKCnZhcnlpbmcgdmVjMiB0ZXhDb29yZDsKdmFyeWluZyB2ZWM0IGNvbG9yOwoKdm9pZCBtYWluKCkKewogICAgdmVjNCB0ZXhjb2xvciA9IHRleHR1cmUyRCh0ZXgsIHRleENvb3JkKSAqIGNvbG9yOwogICAgdmVjMyBfMzIgPSB0ZXhjb2xvci54eXogKiBjb2xvci53OwogICAgdGV4Y29sb3IgPSB2ZWM0KF8zMi54LCBfMzIueSwgXzMyLnosIHRleGNvbG9yLncpOwogICAgZ2xfRnJhZ0RhdGFbMF0gPSB0ZXhjb2xvcjsKfQoK";
 kha_Shaders.painter_video_vertData0 = "s407:I3ZlcnNpb24gMTAwCgp1bmlmb3JtIG1hdDQgcHJvamVjdGlvbk1hdHJpeDsKCmF0dHJpYnV0ZSB2ZWMzIHZlcnRleFBvc2l0aW9uOwp2YXJ5aW5nIHZlYzIgdGV4Q29vcmQ7CmF0dHJpYnV0ZSB2ZWMyIHZlcnRleFVWOwp2YXJ5aW5nIHZlYzQgY29sb3I7CmF0dHJpYnV0ZSB2ZWM0IHZlcnRleENvbG9yOwoKdm9pZCBtYWluKCkKewogICAgZ2xfUG9zaXRpb24gPSBwcm9qZWN0aW9uTWF0cml4ICogdmVjNCh2ZXJ0ZXhQb3NpdGlvbiwgMS4wKTsKICAgIHRleENvb3JkID0gdmVydGV4VVY7CiAgICBjb2xvciA9IHZlcnRleENvbG9yOwp9Cgo";
 kha_Shaders.painter_video_vertData1 = "s372:I3ZlcnNpb24gMzAwIGVzCgp1bmlmb3JtIG1hdDQgcHJvamVjdGlvbk1hdHJpeDsKCmluIHZlYzMgdmVydGV4UG9zaXRpb247Cm91dCB2ZWMyIHRleENvb3JkOwppbiB2ZWMyIHZlcnRleFVWOwpvdXQgdmVjNCBjb2xvcjsKaW4gdmVjNCB2ZXJ0ZXhDb2xvcjsKCnZvaWQgbWFpbigpCnsKICAgIGdsX1Bvc2l0aW9uID0gcHJvamVjdGlvbk1hdHJpeCAqIHZlYzQodmVydGV4UG9zaXRpb24sIDEuMCk7CiAgICB0ZXhDb29yZCA9IHZlcnRleFVWOwogICAgY29sb3IgPSB2ZXJ0ZXhDb2xvcjsKfQoK";
+kha_Shaders.painter_video_vertData2 = "s471:I3ZlcnNpb24gMTAwCgp1bmlmb3JtIG1lZGl1bXAgbWF0NCBwcm9qZWN0aW9uTWF0cml4OwoKYXR0cmlidXRlIG1lZGl1bXAgdmVjMyB2ZXJ0ZXhQb3NpdGlvbjsKdmFyeWluZyBtZWRpdW1wIHZlYzIgdGV4Q29vcmQ7CmF0dHJpYnV0ZSBtZWRpdW1wIHZlYzIgdmVydGV4VVY7CnZhcnlpbmcgbWVkaXVtcCB2ZWM0IGNvbG9yOwphdHRyaWJ1dGUgbWVkaXVtcCB2ZWM0IHZlcnRleENvbG9yOwoKdm9pZCBtYWluKCkKewogICAgZ2xfUG9zaXRpb24gPSBwcm9qZWN0aW9uTWF0cml4ICogdmVjNCh2ZXJ0ZXhQb3NpdGlvbiwgMS4wKTsKICAgIHRleENvb3JkID0gdmVydGV4VVY7CiAgICBjb2xvciA9IHZlcnRleENvbG9yOwp9Cgo";
 kha_System.renderListeners = [];
 kha_System.foregroundListeners = [];
 kha_System.resumeListeners = [];
@@ -37050,5 +37011,3 @@ zui_Zui.comboFirst = true;
 zui_Handle.global = new zui_Handle();
 Main.main();
 })(typeof exports != "undefined" ? exports : typeof window != "undefined" ? window : typeof self != "undefined" ? self : this, typeof window != "undefined" ? window : typeof global != "undefined" ? global : typeof self != "undefined" ? self : this);
-
-//# sourceMappingURL=kha.js.map

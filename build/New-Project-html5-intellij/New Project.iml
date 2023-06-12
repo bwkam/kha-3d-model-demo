@@ -6,13 +6,13 @@
     <option name="excludeFromCompilation" value="true" />
     <option name="flexSdkName" value="flex_sdk_4.6" />
     <option name="haxeTarget" value="JavaScript" />
-    <option name="hxmlPath" value="$MODULE_DIR$/../New-Project-debug-html5.hxml" />
+    <option name="hxmlPath" value="$MODULE_DIR$/../New-Project-html5.hxml" />
     <option name="mainClass" value="Main" />
     <option name="outputFileName" value="kha.swf" />
-    <option name="outputFolder" value="$MODULE_DIR$/../debug-html5" />
+    <option name="outputFolder" value="$MODULE_DIR$/../html5" />
   </component>
   <component name="NewModuleRootManager" inherit-compiler-output="false">
-    <output url="file://$MODULE_DIR$/../debug-html5" />
+    <output url="file://$MODULE_DIR$/../html5" />
     <exclude-output />
     <content url="file://$MODULE_DIR$/../..">
       <sourceFolder url="file:///home/ryn/.vscode-oss/extensions/kodetech.kha-23.5.0-universal/Kha/Sources" isTestSource="false" />
